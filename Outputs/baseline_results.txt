@@ -1,0 +1,14 @@
+Dataset = RAVDESS
+Features = MFCC (40)
+Classifier = Random Forest
+
+Accuracy = 92.36%
+Mathematical Formulation
+Reserch methodolgy With comparsions,
+pverall discussion
+then
+benchmarking techniques
+latest techniques
+comparsions
+performance matrix
+Graph should be xplained

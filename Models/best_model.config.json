@@ -1,0 +1,10 @@
+{
+  "psycho_dim": 34,
+  "hubert_dim": 768,
+  "hidden_dim": 128,
+  "num_classes": 8,
+  "fusion": "cross_attention",
+  "n_tokens": 4,
+  "n_heads": 4,
+  "dropout": 0.3
+}

@@ -1,0 +1,42 @@
+# PAER-LLM dependencies
+# Consolidated from requirements.txt + requirement.txt.txt, which disagreed:
+# the first was missing torch/torchaudio/transformers (so the project could not
+# run from it), the second was missing streamlit/joblib/parselmouth. Neither
+# listed praat-parselmouth, which Features/pitch.py imports, so a clean install
+# from either file crashed on the first pitch extraction.
+#
+#   pip install -r requirements.txt
+#
+# Install PyTorch first if you need a specific CUDA build:
+#   https://pytorch.org/get-started/locally/
+
+# --- core ---
+numpy>=1.24,<2.1
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.3
+joblib>=1.3
+tqdm>=4.65
+
+# --- audio ---
+librosa>=0.10.1
+soundfile>=0.12
+audioread>=3.0
+praat-parselmouth>=0.4.3      # imported as `parselmouth` in Features/pitch.py
+
+# --- deep learning ---
+torch>=2.1
+torchaudio>=2.1
+transformers>=4.40
+accelerate>=0.30              # required by device_map="auto" in LLM/llm_model.py
+sentencepiece>=0.1.99         # tokenizer backend for Phi-3 / Llama family
+
+# --- visualisation & app ---
+matplotlib>=3.7
+seaborn>=0.12
+streamlit>=1.32
+
+# --- notebooks ---
+jupyter>=1.0
+notebook>=7.0
+ipykernel>=6.25

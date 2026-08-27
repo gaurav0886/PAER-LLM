@@ -1,0 +1,28 @@
+{
+  "fusion": "cross_attention",
+  "split": "random",
+  "cv": 0,
+  "epochs": 100,
+  "batch_size": 32,
+  "lr": 0.001,
+  "weight_decay": 0.01,
+  "dropout": 0.3,
+  "hidden_dim": 128,
+  "label_smoothing": 0.05,
+  "patience": 15,
+  "seed": 42,
+  "keep_duplicates": false,
+  "best_val_macro_f1": 0.8398050049365839,
+  "n_utterances": 1440,
+  "classes": [
+    "angry",
+    "calm",
+    "disgust",
+    "fearful",
+    "happy",
+    "neutral",
+    "sad",
+    "surprised"
+  ],
+  "elapsed_seconds": 49.5
+}

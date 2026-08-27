@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+title: >-
+  PAER-LLM: A Unified Psychoacoustic-Semantic Representation for
+  Speech Emotion Recognition
+message: >-
+  If you use this software or the evaluation harness, please cite it
+  using the metadata below.
+type: software
+authors:
+  - given-names: Gaurav
+    family-names: Sharma
+    email: gaurav.vit08@gmail.com
+repository-code: 'https://github.com/<user>/paer-llm'
+abstract: >-
+  Code and evaluation harness for a controlled study of evaluation
+  protocol effects in speech emotion recognition on RAVDESS. Holding
+  architecture and hyperparameters fixed and varying only the data
+  partitioning, reported accuracy moves 30.5 points, while the largest
+  difference between three fusion operators is 2.03 points - below the
+  design's 3.47-point minimum detectable effect. Includes actor-disjoint
+  splitting utilities with published fold assignments, a corpus-integrity
+  check, the contaminated-protocol reproduction, and stream
+  complementarity and calibration analyses.
+keywords:
+  - speech emotion recognition
+  - evaluation protocol
+  - data leakage
+  - speaker-independent evaluation
+  - psychoacoustic features
+  - reproducibility
+license: MIT

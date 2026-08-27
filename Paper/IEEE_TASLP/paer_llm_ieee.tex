@@ -1,0 +1,2342 @@
+%% =====================================================================
+%% PAER-LLM -- IEEE/ACM Transactions on Audio, Speech, and Language
+%% Processing (T-ASLP) submission.
+%%
+%% Compile:  pdflatex paer_llm_ieee -> bibtex paer_llm_ieee -> pdflatex x2
+%%
+%% Requires: references.bib
+%%           figures/fig1_framework_ieee.pdf         (supplied)
+%%           figures/fig4_protocol_vs_architecture.pdf (supplied)
+%%           figures/fig8_confusion_matrices.pdf       (supplied)
+%%           figures/fig9_minimum_detectable_effect.pdf(supplied)
+%%           figures/fig2_decomposition_ladder.pdf   <- to produce
+%%           figures/fig5_stream_complementarity.pdf <- to produce
+%%           figures/fig7_reliability.pdf            <- to produce
+%%
+%% Every numerical value below was recomputed from the project's own
+%% result files:
+%%   Evaluation/cv_results_{concat,gated,cross_attention}_speaker.json
+%%   Evaluation/test_metrics.json
+%%   Evaluation/test_metrics_cross_attention_random_dup.json
+%%   Evaluation/classification_report*.txt, confusion_matrix*.csv
+%%   Models/train_config*.json, Models/best_model.config.json
+%%
+%% DRAFT MARKERS: see the \ifdraft block below.
+%% LAYOUT: review (one column) vs camera-ready (two column) -- one line.
+%% =====================================================================
+
+% ---------------------------------------------------------------------
+% LAYOUT. Exactly one of these must be active.
+%
+%   review     one column, 11pt, generous leading. This is IEEE's own
+%              review-copy format: broader measure, more air, easier to
+%              annotate. Roughly twice the page count of camera-ready,
+%              which is expected and not a problem at submission.
+%   cameraready  the two-column T-ASLP page.
+%
+% Everything downstream adapts automatically -- figure widths, wide
+% floats and table shrink-to-fit all key off \ifCLASSOPTIONonecolumn.
+% ---------------------------------------------------------------------
+\documentclass[journal,onecolumn,11pt,draftclsnofoot]{IEEEtran}   % review
+%\documentclass[journal]{IEEEtran}                                % camera-ready
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cite}
+\usepackage{adjustbox}
+\usepackage{setspace}
+
+% ---------------------------------------------------------------------
+% Layout-dependent measures.
+%
+% In one-column mode \columnwidth equals \textwidth, so a figure drawn
+% for a 3.4in column would be blown up to 6.5in and its type would swell
+% with it. \figw keeps every figure at the size it was designed for in
+% either mode.
+% ---------------------------------------------------------------------
+\newlength{\figw}
+\newlength{\wfigw}
+\ifCLASSOPTIONonecolumn
+  \setstretch{1.28}          % airy, but short of full double spacing
+  \AtBeginDocument{%
+    \setlength{\figw}{0.62\columnwidth}%
+    \setlength{\wfigw}{0.86\textwidth}}
+\else
+  \AtBeginDocument{%
+    \setlength{\figw}{\columnwidth}%
+    \setlength{\wfigw}{0.95\textwidth}}
+\fi
+
+% ---------------------------------------------------------------------
+% Draft markers.
+%
+%   \drafttrue   working copy: every gap shouts in red, with the command
+%                that fills it.
+%   \draftfalse  clean copy: prose markers disappear and unfilled result
+%                cells become a discreet grey "pending".
+%
+% \draftfalse deliberately does NOT print "---" for an unfilled cell. A
+% dash reads as a legitimate "not applicable", so the one failure mode
+% this paper exists to criticise -- a missing number that looks like a
+% reported one -- would be reintroduced by its own template. Before
+% submitting, check that nothing is left:
+%
+%     grep -n "TORUN\|TOADD\|\\RUN\b" paer_llm_ieee.tex
+% ---------------------------------------------------------------------
+\newif\ifdraft
+\draftfalse                   % \drafttrue while filling in results
+\ifdraft
+  \newcommand{\TORUN}[1]{\textcolor{red}{\textbf{[run: #1]}}}
+  \newcommand{\TOADD}[1]{\textcolor{red}{\textbf{[add: #1]}}}
+  \newcommand{\RUN}{\textcolor{red}{\textbf{--?--}}}
+\else
+  % \TORUN is a note to the author sitting at the end of a sentence that
+  % reads correctly without it, so it simply goes away.
+  \newcommand{\TORUN}[1]{}
+  % \TOADD marks a hole *inside* a sentence -- the affiliation, the
+  % repository URL. Dropping it silently leaves "G. Sharma is with
+  % (e-mail: ...)", so in clean mode it stays, quietly.
+  \newcommand{\TOADD}[1]{\textcolor{gray}{[#1]}}
+  \newcommand{\RUN}{\textcolor{gray}{\footnotesize pending}}
+\fi
+
+% ---------------------------------------------------------------------
+% \paperfig{path-without-extension}{width}{reserved height}
+%
+% Draws the graphic if the file is on disk, and otherwise reserves an
+% area of exactly the height the finished figure will occupy. Running
+% Experiments/make_paper_figures.py is therefore the whole of "insert
+% the figures" -- there is no LaTeX edit to remember afterwards, and no
+% window in which the document fails to compile.
+% ---------------------------------------------------------------------
+\newcommand{\reservedfig}[2]{%
+  \fboxsep=0pt\fboxrule=0.6pt%
+  \textcolor{gray}{\fbox{\parbox[c][#2][c]{#1}{%
+    \hbadness=10000\relax\centering\tiny\itshape\color{gray}
+    reserved space\\ figure to be inserted\\[1pt]
+    (file named in the caption)}}}}
+
+% #3 is the finished figure's aspect ratio (height/width), so the space
+% reserved is the space the graphic will actually occupy in whichever
+% layout is active -- the page never reflows when the figures arrive.
+\newlength{\pfw}
+\newcommand{\paperfig}[3]{%
+  \IfFileExists{#1.pdf}%
+    {\includegraphics[width=#2]{#1.pdf}}%
+    {\setlength{\pfw}{#2}\reservedfig{\pfw}{#3\pfw}}}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+
+\begin{document}
+
+\title{A Unified Psychoacoustic--Semantic Representation for Speech
+Emotion Recognition, and the Evaluation Protocol Required to Assess It}
+
+\author{Gaurav~Sharma%
+\thanks{G. Sharma is with \TOADD{Department, Institution, City, Postcode,
+Country} (e-mail: gaurav.vit08@gmail.com).}%
+\thanks{Manuscript submitted \TOADD{date}.}}
+
+\markboth{IEEE/ACM Transactions on Audio, Speech, and Language Processing,
+Vol.~XX, No.~X, XXXX}{Sharma: A Unified Psychoacoustic--Semantic
+Representation for Speech Emotion Recognition}
+
+\IEEEtitleabstractindextext{%
+\begin{abstract}
+Speech emotion recognition increasingly relies on self-supervised
+representations, yet whether perceptually motivated psychoacoustic descriptors
+remain complementary to them is unresolved, and published eight-class
+accuracies on the RAVDESS corpus range from 39.6\% to 99.0\%. We propose
+PAER-LLM, a five-layer framework that unifies 34 psychoacoustic descriptors
+with frozen HuBERT embeddings through a learned per-dimension gate and
+conditions an instruction-tuned language model on the resulting posterior. We
+formalise the unified-representation problem, the protocol-dependence of its
+assessment, and the resolution at which a representational claim is
+admissible. Evaluating one implementation under six protocols that differ only
+in partitioning and model selection, with architecture, features, optimiser and
+schedule held fixed, accuracy falls from 94.79\% under a contaminated random
+split to 64.28\%~$\pm$~5.30 under speaker-disjoint five-fold
+cross-validation---a spread of 30.5 points. Under the most defensible protocol
+the largest difference between three fusion operators is 2.03 points, below the
+design's 3.47-point minimum detectable effect. Contamination also conceals a
+21.6-point gender disparity, shrinking it to 2.5 points. We prove that
+single-token cross-modal attention is analytically degenerate, its query stream
+receiving exactly zero gradient, and show that a corrected multi-token form is
+outperformed by a single gate at 3.1$\times$ the parameters.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Speech emotion recognition, psychoacoustic features, representation learning,
+feature fusion, evaluation protocol, data leakage, speaker-independent
+evaluation, large language models.
+\end{IEEEkeywords}}
+
+\maketitle
+\IEEEdisplaynontitleabstractindextext
+\IEEEpeerreviewmaketitle
+
+% =====================================================================
+\section{Introduction}
+\label{sec:intro}
+% =====================================================================
+\IEEEPARstart{S}{peech} emotion recognition (SER) underpins affective
+human--computer interaction, and is supported by large self-supervised speech
+encoders and an extensive benchmark literature \cite{wani2021comprehensive,
+latif2023survey,khare2024emotion}. This paper is concerned with two problems
+that the field treats separately and that, we argue, cannot be separated.
+
+\subsection{Problem Statement}
+\label{sec:problem}
+
+Emotion in speech is carried by perceptually salient acoustic properties.
+Listeners recover a talker's affective state from fundamental frequency and its
+movement, from intensity, and from how energy is distributed across the
+auditory critical bands---quantities that hearing science has described for six
+decades and that standardised parameter sets such as GeMAPS/eGeMAPS formalise
+\cite{eyben2016gemaps,zwicker1961subdivision}. Modern SER, however, is built
+almost entirely on self-supervised transformer encoders trained on raw
+waveforms with no perceptual objective \cite{baevski2020wav2vec2,hsu2021hubert,
+chen2022wavlm}. These two accounts of what matters in an emotional utterance
+have largely stopped talking to each other. The first problem this paper
+addresses is therefore representational: \emph{do perceptually motivated
+psychoacoustic descriptors still carry emotional information that a large
+self-supervised encoder does not already provide, and if so, how should the two
+be combined into a single representation?} The question is not settled. Dixit
+\emph{et al.} \cite{dixit2024explaining} regress self-supervised embeddings onto
+eGeMAPS categories and find that deep representations recover only part of the
+handcrafted perceptual space, which implies complementarity; yet systems that
+add handcrafted descriptors to self-supervised embeddings report gains of one
+to three accuracy points, which is small enough that it may not be a gain at
+all.
+
+That last clause is the second problem, and it turns out to govern the first.
+Published eight-class accuracies on the Ryerson Audio-Visual Database of
+Emotional Speech and Song (RAVDESS) \cite{livingstone2018ravdess}---the corpus
+on which such comparisons are most often made---span 39.6\%
+\cite{goel2024camulenet} to 99.0\% \cite{jafarzadeh2024ssl} within the last two
+years. They cannot both characterise the same task. The discrepancy is not
+principally architectural: it follows from how the corpus is partitioned.
+RAVDESS comprises 1440 speech utterances produced by 24 professional actors,
+each reading the same two sentences across all eight emotion categories at two
+intensities with two repetitions. A random utterance-level partition therefore
+guarantees that for every test item there exists a training item from the same
+speaker, with the same lexical content, at the same emotional intensity,
+differing only in take. A classifier can succeed by recognising the talker
+rather than the emotion. When the confounding effect of the evaluation design
+exceeds the effect being measured, no representational question can be answered
+on that evidence, however carefully the representation is built.
+
+The two problems compound. A researcher proposing a unified psychoacoustic and
+self-supervised representation, as we do, has no way to establish that the
+psychoacoustic stream earns its place if the measurement apparatus cannot
+resolve differences of the size that stream is likely to produce. Conversely, a
+field that reports architectural improvements of one to three points under
+undisclosed partitioning schemes accumulates a literature in which
+representational claims cannot be checked. This paper therefore treats the two
+as one problem. We formalise the unified representation and the protocol that
+assesses it in a single framework (Section~\ref{sec:formulation}), construct the
+representation (Section~\ref{sec:framework}), state precisely how much evidence
+would be required to accept it, and then measure how much evidence the field's
+standard protocols actually supply. The answer is: considerably less than is
+required, and the shortfall is large enough to swallow the entire architectural
+literature on this corpus.
+
+\subsection{Research Objective and Scope}
+\label{sec:objective}
+
+The objective of this work is to propose and characterise a unified
+representation framework that integrates psychoacoustic emotional features with
+self-supervised speech representations, and to condition a large language model
+on the emotional evidence that framework produces. We name the framework
+PAER-LLM (Psychoacoustically-Aware Emotion Recognition with a Language Model)
+and specify it as five layers in Section~\ref{sec:framework}.
+
+Three boundaries on that objective should be stated at the outset.
+
+First, the framework is \emph{unimodal}. Both streams are computed from one
+audio signal; they are two feature views of the same modality, not two
+modalities. We therefore use ``unified representation'' and never
+``multimodal'', and distinguish our setting from audio-visual work explicitly.
+
+Second, Layers~1--3 are evaluated here. Layer~4, which conditions an
+instruction-tuned language model on the classifier's posterior, is specified
+and implemented but \emph{not} evaluated: we report no human study, no
+automatic metric and no ablation for it. Layer~5 is a demonstration interface.
+We mark this division in Fig.~\ref{fig:framework} rather than leaving it to be
+inferred, and Section~\ref{sec:llm-discussion} sets out the calibration
+experiment that would make Layer~4 load-bearing.
+
+Third, the empirical scope is a single corpus. All numerical results are on
+RAVDESS. The analytical results of Section~\ref{sec:properties} are
+corpus-independent; the magnitudes are not.
+
+We stress one point of interpretation. The configuration of PAER-LLM that we
+adopt is statistically indistinguishable from plain concatenation of the two
+encoded streams, and its originally proposed fusion mechanism does not work at
+all, in a sense we prove in Proposition~\ref{prop:degen}. We report both
+against our own interest, because the alternative---selecting the configuration
+that flatters the proposed method---is precisely the researcher degree of
+freedom that Nie{\ss}l \emph{et al.} \cite{niessl2022overoptimism} identify as a
+source of systematic over-optimism.
+
+\subsection{Contributions}
+\label{sec:contributions}
+
+\begin{enumerate}
+  \item \textbf{A formal problem formulation}
+    (Section~\ref{sec:formulation}) that states the unified-representation
+    objective, the information-theoretic condition under which the
+    psychoacoustic view can contribute, the evaluation protocol as an operator
+    on the corpus, and an \emph{admissibility} criterion that a representational
+    claim must satisfy to be supported by a given design.
+  \item \textbf{A unified psychoacoustic--semantic representation framework.}
+    PAER-LLM encodes 34 perceptually motivated descriptors and a frozen
+    mean-pooled HuBERT-base embedding into a common 128-dimensional space and
+    combines them with a learned per-dimension gate, whose posterior conditions
+    an instruction-tuned language model (Section~\ref{sec:framework},
+    Algorithms~\ref{alg:unified}--\ref{alg:prompt}). All three fusion operators
+    compared emit exactly 128 dimensions, so downstream capacity is fixed and
+    the comparison isolates the operator.
+  \item \textbf{Three analytical properties of pooled-vector fusion}
+    (Section~\ref{sec:properties}): single-token cross-modal attention is
+    exactly degenerate and gradient-inert; gated fusion is confined to the
+    per-coordinate convex hull of its inputs while concatenation is not, so
+    neither operator contains the other; and the parameter and multiply--
+    accumulate cost of token cross-attention exceeds both by 3.1$\times$ and
+    5.3$\times$ respectively.
+  \item \textbf{A controlled decomposition of the evaluation-protocol effect}
+    (Section~\ref{sec:protocol}, Algorithm~\ref{alg:decompose}), isolating
+    duplicate records, speaker-dependent partitioning, test-set model selection
+    and single-split reporting within one fixed system. To our knowledge this is
+    the first study to attribute a RAVDESS performance gap to its individual
+    protocol components rather than to report two endpoints.
+  \item \textbf{A protocol-to-architecture effect ratio and a stated resolution
+    limit.} Under the most defensible protocol the largest difference between
+    three fusion operators is 2.03 points against a 30.5-point protocol effect;
+    the design's minimum detectable effect is 3.47 points, so the entire
+    architectural range is inadmissible under our own criterion
+    (Sections~\ref{sec:fusion} and~\ref{sec:mde}).
+  \item \textbf{Evidence that contamination conceals fairness failures.} Under
+    the contaminated protocol the female--male accuracy disparity is 2.5 points;
+    under speaker-disjoint evaluation of the same system it is 21.6 points, and
+    the dominant per-class failure (\emph{happy}, $F_1$ 0.511) is invisible
+    ($F_1$ 0.915). Protocol choice therefore distorts not only reported accuracy
+    but the fairness and error audits built on it (Section~\ref{sec:speaker}).
+  \item \textbf{A reproducible evaluation harness} with published fold
+    assignments, the contaminated-protocol reproduction, a corpus-integrity
+    check, the complementarity and calibration analysis, and per-fold prediction
+    files.
+\end{enumerate}
+
+\subsection{Organisation}
+Section~\ref{sec:related} reviews the relevant literature including recent
+systems. Section~\ref{sec:formulation} formalises the problem.
+Section~\ref{sec:framework} specifies the framework.
+Section~\ref{sec:methodology} sets out the research methodology and the
+benchmarking design. Section~\ref{sec:setup} gives the experimental
+configuration. Section~\ref{sec:results} reports results, including the
+performance matrix and complexity analysis. Section~\ref{sec:discussion}
+discusses, Section~\ref{sec:limitations} states limitations, and
+Section~\ref{sec:conclusion} concludes.
+
+% =====================================================================
+\section{Related Work}
+\label{sec:related}
+% =====================================================================
+
+\subsection{Self-Supervised Representations for Emotion Recognition}
+Self-supervised encoders---wav2vec~2.0 \cite{baevski2020wav2vec2}, HuBERT
+\cite{hsu2021hubert} and WavLM \cite{chen2022wavlm}---underpin most competitive
+SER systems, and SUPERB \cite{yang2021superb} established frozen-encoder probing
+as a standard evaluation. Pepino \emph{et al.} \cite{pepino2021wav2vec} showed
+that a learned weighted combination of intermediate layers substantially
+outperforms the final layer for emotion, consistent with layer-wise probing
+analyses showing an acoustic--phonetic--acoustic trajectory across depth
+\cite{pasad2021layerwise,pasad2023comparative}. Chiu \emph{et al.}
+\cite{chiu2025probing} report that speaker-state and prosodic attributes are
+most robustly represented in middle layers while final layers suppress speaker
+identity. Wagner \emph{et al.} \cite{wagner2023dawn} provide the most systematic
+study of transformer fine-tuning for dimensional SER, including robustness and
+fairness analyses. Emotion-specialised pretraining extends this line
+\cite{chen2024vesper,ma2024emotion2vec}.
+
+We use frozen mean-pooled HuBERT-base representations. This is deliberately
+conservative: it isolates the contribution of the psychoacoustic stream and the
+fusion operator from that of encoder adaptation, which is known to be large
+\cite{chen2023exploring}.
+
+\subsection{Psychoacoustic and Prosodic Representations}
+That emotion is carried by perceptually salient acoustic correlates remains
+supported by recent systematic review \cite{schewski2025acoustic,
+larrouymaestri2025prosody}. Standardised parameter sets such as GeMAPS/eGeMAPS
+\cite{eyben2016gemaps}, extracted via openSMILE \cite{eyben2010opensmile},
+formalise this premise. The critical-band concept and its analytical
+approximation are due to Zwicker \cite{zwicker1961subdivision} and Zwicker and
+Terhardt \cite{zwicker1980analytical} respectively. Whether such descriptors
+retain value alongside self-supervised embeddings is the representational
+question this framework is built to test \cite{dixit2024explaining}.
+Perceptually motivated spectral front-ends have shown advantages over mel
+filterbanks, particularly under noise \cite{peng2023cochleagram,
+peng2023dimensional}.
+
+\subsection{Fusion of Heterogeneous Feature Streams}
+Cross-attention is the default mechanism for fusing heterogeneous
+representations in affective computing \cite{vaswani2017attention,
+praveen2021crossattention,zou2022coattention}, including systems fusing
+handcrafted acoustic descriptors with self-supervised embeddings
+\cite{zhao2025humpcat}. Gated variants are common \cite{li2025wavfusion}, and
+Nasersharif and Azad \cite{nasersharif2024attention} compare attention-based
+fusion against simpler classifier combination. Much of this literature is
+genuinely multimodal---audio with video or text---whereas our two streams are
+views of one signal; the distinction matters because cross-modal attention is
+motivated by alignment between sequences that our pooled setting does not
+provide (Section~\ref{sec:why-fusion}).
+
+A parallel literature questions how much attention contributes. Dong \emph{et
+al.} \cite{dong2021attentionnotall} prove that pure attention loses rank doubly
+exponentially with depth; Zhai \emph{et al.} \cite{zhai2023entropycollapse}
+characterise pathological attention-entropy regimes; and Bibal \emph{et al.}
+\cite{bibal2022attention} survey whether attention weights constitute evidence
+of learned interaction. Proposition~\ref{prop:degen} is related but distinct:
+rank collapse is asymptotic in depth, whereas our degeneracy is \emph{exact} and
+arises from sequence length one, independently of depth, head count or scaling.
+
+\subsection{Language Models for Emotion-Sensitive Interaction}
+Emotionally aware dialogue has been studied through emotional support
+conversation \cite{liu2021esconv}, empathetic response generation
+\cite{qian2023empathetic}, and benchmarks of emotional competence
+\cite{sabour2024emobench}. Architecturally, systems divide into end-to-end
+audio-conditioned models \cite{tang2023salmonn,chu2024qwen2audio,
+kim2024paralinguistics} and cascaded designs. Recent work shows a frozen LLM can
+be made to perceive paralinguistic style through encoder alignment
+\cite{kang2025frozen}, and that structured, interpretable speech descriptors can
+condition an LLM for explainable emotion recognition \cite{chen2025descriptors}.
+We adopt a cascaded design conditioned on the classifier's full posterior rather
+than its top-1 label, informed by work on eliciting calibrated confidence
+\cite{tian2023calibration} and on principled abstention \cite{wen2025abstention}.
+
+\subsection{Evaluation Protocol, Leakage and Reproducibility}
+\label{sec:rw-leakage}
+Kapoor and Narayanan \cite{kapoor2023leakage} document leakage-driven
+irreproducibility across seventeen fields. Elangovan \emph{et al.}
+\cite{elangovan2021memorization} quantify train--test overlap in NLP benchmarks
+and show that near-duplicate examples permit high scores through memorisation.
+Rosenblatt \emph{et al.} \cite{rosenblatt2024leakage} find that repeated
+subjects across partitions inflate performance most severely, with small
+datasets most vulnerable---a description that fits RAVDESS closely. Gorman and
+Bedrick \cite{gorman2019splits} show that conclusions drawn from standard splits
+frequently fail to replicate under resampling, and Bouthillier \emph{et al.}
+\cite{bouthillier2021variance} demonstrate that ignoring sources of benchmark
+variance inflates apparent significance \cite{niessl2022overoptimism,
+lones2024pitfalls}.
+
+The standard we advocate is not new. The INTERSPEECH 2009 Emotion Challenge
+\cite{schuller2009challenge} established speaker-independent partitioning as the
+norm nearly two decades ago, and the Interspeech 2025 challenge on naturalistic
+SER \cite{naini2025challenge} retains it. EmoBox \cite{ma2024emobox} now
+distributes standardised speaker-independent splits across corpora, including
+RAVDESS. What has happened since 2009 is erosion rather than absence.
+
+\subsection{Recent Systems and the State of the Art}
+\label{sec:sota}
+Because our central claim concerns comparability rather than rank, we survey
+recent RAVDESS systems by \emph{protocol} rather than by score.
+
+Among speaker-dependent designs, Jafarzadeh \emph{et al.}
+\cite{jafarzadeh2024ssl} report 97.8--99.0\% for self-supervised encoders with a
+lightweight classifier under an explicitly random stratified 80/20 split;
+emotion2vec \cite{ma2024emotion2vec} reports 82.43\% under what it calls
+``random leave-one-out 10-fold CV'', a phrase that reads as speaker-independent
+but denotes a random utterance-level partition; and Ibrahim \emph{et al.}
+\cite{ibrahim2026multimodal} report 95.83\% for audio-visual hybrid fusion.
+
+Among speaker-independent designs, CAMuLeNet \cite{goel2024camulenet} reports
+82.3\% under ten-fold leave-speaker-out and, valuably, also reports
+single-encoder baselines under the identical protocol---58.7\% for HuBERT,
+65.4\% for WavLM, 39.6\% for wav2vec~2.0. Luna-Jim{\'e}nez \emph{et al.}
+\cite{lunajimenez2022multimodal} report 81.82\% under subject-wise five-fold
+cross-validation with published fold assignments. Portal \emph{et al.}
+\cite{portal2025benchmarking} re-validate state-of-the-art SER transformers
+under strictly speaker-independent conditions and find most single-corpus
+results below 40\%. Ibrahim \emph{et al.} \cite{ibrahim2026multimodal} report
+both protocols for one system: 95.83\% random against 48.06\%~$\pm$~9.76
+leave-one-speaker-out.
+
+Two observations follow. First, the two most informative recent papers are
+those that report \emph{both} protocols or several encoders under \emph{one}
+protocol; single-number reports are the least usable. Second, the
+speaker-independent class spans 44.7 points, wider than the speaker-dependent
+class, so protocol annotation alone does not make figures comparable. Our
+contribution to this literature is a controlled decomposition: rather than
+comparing across papers that differ in many respects, we vary the protocol alone
+within one system and attribute the resulting gap to its components.
+
+% =====================================================================
+\section{Problem Formulation}
+\label{sec:formulation}
+% =====================================================================
+
+\subsection{Notation and Task}
+Let $\mathcal{A}$ denote the space of speech waveforms and
+$\mathcal{Y}=\{1,\dots,C\}$ the set of emotion categories, $C = 8$. A corpus is
+a set $\mathcal{D}=\{(a_k, y_k, s_k)\}_{k=1}^{N}$ of utterances $a_k \in
+\mathcal{A}$ with labels $y_k \in \mathcal{Y}$ and speaker identifiers $s_k \in
+\mathcal{S}$; for RAVDESS, $N = 1440$ and $|\mathcal{S}| = 24$. Two feature maps
+extract complementary views of the same signal,
+\begin{equation}
+  \varphi_p : \mathcal{A} \rightarrow \mathbb{R}^{d_p}, \qquad
+  \varphi_h : \mathcal{A} \rightarrow \mathbb{R}^{d_h},
+  \label{eq:views}
+\end{equation}
+with $d_p = 34$ perceptually motivated descriptors and $d_h = 768$ dimensions
+from a frozen self-supervised encoder. Write $\mathbf{x}_p = \varphi_p(a)$ and
+$\mathbf{x}_h = \varphi_h(a)$.
+
+\subsection{The Unified Representation Problem}
+We seek stream encoders $\mathrm{Enc}_p : \mathbb{R}^{d_p}\!\rightarrow\!
+\mathbb{R}^{d}$ and $\mathrm{Enc}_h : \mathbb{R}^{d_h}\!\rightarrow\!
+\mathbb{R}^{d}$, a fusion operator $\omega : \mathbb{R}^{d} \times
+\mathbb{R}^{d} \rightarrow \mathbb{R}^{d}$ drawn from a family $\Omega$, and a
+classifier $g_\psi : \mathbb{R}^{d} \rightarrow \Delta^{C-1}$, such that the
+\emph{unified representation}
+\begin{equation}
+  \mathbf{z} = \omega\big(\mathrm{Enc}_p(\mathbf{x}_p),\;
+                          \mathrm{Enc}_h(\mathbf{x}_h)\big) \in \mathbb{R}^{d}
+  \label{eq:unified}
+\end{equation}
+minimises the expected risk
+\begin{equation}
+  (\theta^\star\!, \omega^\star) = \arg\min_{\theta,\, \omega \in \Omega}\;
+  \mathbb{E}_{(a,y)\sim P}\big[\ell\big(g_\psi(\mathbf{z}),\, y\big)\big],
+  \label{eq:risk}
+\end{equation}
+subject to the \emph{capacity constraint}
+\begin{equation}
+  \dim\!\big(\omega(\cdot,\cdot)\big) = d \quad \text{for every } \omega \in
+  \Omega .
+  \label{eq:capacity}
+\end{equation}
+Constraint~\eqref{eq:capacity} is what makes an ablation over $\Omega$
+interpretable: every operator hands the classifier the same number of
+dimensions, so a difference in risk is attributable to the operator and not to
+downstream width. We take $\Omega = \{\textsc{concat}, \textsc{gate},
+\textsc{xattn}\}$, defined in Section~\ref{sec:fusion-design}.
+
+\subsection{When Can the Psychoacoustic View Contribute?}
+\label{sec:whencontrib}
+Objective~1 asks whether $\varphi_p$ is worth including at all. Let $A$ be a
+random utterance with label $Y$. The relevant quantity is the \emph{unique
+information} the perceptual view carries about the label given the
+self-supervised view,
+\begin{equation}
+  U_p \;=\; I\big(\varphi_p(A);\, Y \,\big|\, \varphi_h(A)\big) \;\geq\; 0 ,
+  \label{eq:unique}
+\end{equation}
+so that
+\begin{equation}
+  I\big(\varphi_p(A), \varphi_h(A);\, Y\big)
+  = I\big(\varphi_h(A);\, Y\big) + U_p .
+  \label{eq:chain}
+\end{equation}
+\emph{Complementarity} is exactly the condition $U_p > 0$; \emph{redundancy} is
+$U_p = 0$. Two consequences shape the rest of the paper.
+
+First, $U_p > 0$ is necessary but not sufficient for an accuracy gain: a finite
+estimator trained on $N = 1440$ utterances may fail to extract information that
+is present. A null result on accuracy therefore does not establish redundancy.
+
+Second, $U_p > 0$ implies that, in the population limit, there exist utterances
+the perceptual view classifies correctly and the self-supervised view does not.
+Writing $E_m$ for the error set of the system trained on view $m$, this
+motivates measuring $|E_h \setminus E_p|$ directly rather than inferring
+complementarity from a difference of means---a distinction that becomes decisive
+once Section~\ref{sec:mde} bounds what the difference of means can resolve.
+Algorithm~\ref{alg:complement} implements the measurement.
+
+\subsection{Evaluation Protocol as an Operator}
+A \emph{protocol} is a partition operator
+\begin{equation}
+  \Pi : (\mathcal{D}, s) \;\longmapsto\;
+  \big(I_{\mathrm{tr}}, I_{\mathrm{va}}, I_{\mathrm{te}}\big),
+  \label{eq:protocol}
+\end{equation}
+mapping a corpus and a seed to disjoint index sets, together with a rule
+naming the partition on which the model is selected. The reported risk is the
+protocol-conditioned estimate
+\begin{equation}
+  \widehat{R}_\Pi(f) \;=\; \frac{1}{|I_{\mathrm{te}}|}
+  \sum_{k \in I_{\mathrm{te}}} \mathbb{1}\big[f(a_k) \neq y_k\big].
+  \label{eq:risk-hat}
+\end{equation}
+
+\begin{definition}[Speaker-disjointness]
+$\Pi$ is speaker-disjoint if $\mathcal{S}(I_{\mathrm{tr}}) \cap
+\mathcal{S}(I_{\mathrm{te}}) = \emptyset$, where $\mathcal{S}(I) = \{s_k : k \in
+I\}$.
+\end{definition}
+
+Two effects can now be compared on the same scale. For a fixed architecture
+$\mathcal{A}$ and two protocols, the \emph{protocol effect} is
+\begin{equation}
+  \Delta_\Pi(\mathcal{A}) =
+  \big|\widehat{R}_{\Pi_1}(f_{\mathcal{A}}) -
+       \widehat{R}_{\Pi_2}(f_{\mathcal{A}})\big| ;
+  \label{eq:deltapi}
+\end{equation}
+for a fixed protocol, the \emph{architecture effect} is
+\begin{equation}
+  \Delta_\Omega(\Pi) = \max_{\omega, \omega' \in \Omega}
+  \big|\widehat{R}_{\Pi}(f_{\omega}) - \widehat{R}_{\Pi}(f_{\omega'})\big| .
+  \label{eq:deltaomega}
+\end{equation}
+The paper's central empirical claim is that $\Delta_\Pi(\mathcal{A}) \gg
+\Delta_\Omega(\Pi)$ on this corpus, by a factor of roughly fifteen. Because
+$\Delta_\Omega(\Pi)$ is small, the choice of which fixed $\mathcal{A}$ anchors
+the ladder in~\eqref{eq:deltapi} shifts the measured protocol effect by at most
+$\Delta_\Omega(\Pi)$, which is 2.03 points here.
+
+\subsection{Admissibility and Design Sensitivity}
+\label{sec:admissible}
+Let $\delta$ be a claimed improvement measured as a mean paired difference over
+$n$ folds with standard deviation $\sigma_\Delta$. For a two-sided paired
+$t$-test at level $\alpha$ and power $1-\beta$, the \emph{minimum detectable
+effect} is
+\begin{equation}
+  \delta_{\min}(n) \;=\; \sigma_\Delta \cdot d_z^{\star}(n, \alpha, \beta),
+  \label{eq:mde}
+\end{equation}
+where $d_z^{\star}$ solves
+$1 - \beta = \Pr\big[\,|T'_{n-1}(d_z\sqrt{n})| > t_{n-1,\,1-\alpha/2}\,\big]$
+and $T'$ is the noncentral $t$ distribution.
+
+\begin{definition}[Admissibility]
+\label{def:admissible}
+A representational or architectural claim of size $\delta$, made on corpus
+$\mathcal{D}$ under protocol $\Pi$ with $n$ folds, is \emph{admissible} only if
+$|\delta| \geq \delta_{\min}(n)$.
+\end{definition}
+
+This is a statement about design, not about an observed $p$-value: post-hoc
+power computed from an observed effect is a monotone function of that effect's
+$p$-value and carries no additional information \cite{hoenig2001abuse}.
+Section~\ref{sec:mde} computes $\delta_{\min}$ for our design and applies
+Definition~\ref{def:admissible} to our own results, which it fails.
+
+\subsection{Properties of Pooled-Vector Fusion}
+\label{sec:properties}
+
+The three operators in $\Omega$ admit analytical comparison, and two of the
+three results below were not anticipated when the framework was designed.
+
+\begin{proposition}[Degeneracy of single-token cross-attention]
+\label{prop:degen}
+Let $\mathbf{q},\mathbf{k},\mathbf{v} \in \mathbb{R}^{1\times d_k}$ be the
+projected query, key and value of a scaled dot-product attention block whose
+query and key/value sequences each have length one. Then the attention output
+satisfies $\mathbf{A} = \mathbf{v}$ identically, and
+$\partial \mathbf{A}/\partial \mathbf{q} = \mathbf{0}$, for any number of heads,
+any head dimension and any scaling.
+\end{proposition}
+\begin{IEEEproof}
+The score matrix is $\mathbf{S} = \mathbf{q}\mathbf{k}^{\!\top}/\sqrt{d_k} \in
+\mathbb{R}^{1\times 1}$, and
+$\mathrm{softmax}(\mathbf{S})_{11} = e^{S_{11}}/e^{S_{11}} = 1$ for every
+$S_{11}\in\mathbb{R}$. Hence $\mathbf{A} = 1\cdot\mathbf{v}$, which does not
+depend on $\mathbf{q}$; the partial derivative is therefore identically zero.
+Multiple heads apply the same argument per head, and any scaling factor cancels
+in the ratio.
+\end{IEEEproof}
+
+\begin{corollary}
+\label{cor:inert}
+If $\omega = \textsc{xattn}$ with $K=1$ and the psychoacoustic stream supplies
+the query, then $\partial\mathbf{z}/\partial\mathbf{e}_p = \mathbf{0}$: the
+psychoacoustic encoder receives no gradient and its parameters remain at
+initialisation. The model is \emph{exactly} the unimodal self-supervised model
+plus an unused parameter block, and cannot in principle demonstrate
+$U_p > 0$.
+\end{corollary}
+
+Corollary~\ref{cor:inert} is the reason $K > 1$ is asserted at line~11 of
+Algorithm~\ref{alg:unified}; Section~\ref{sec:degeneracy} confirms it
+empirically.
+
+\begin{proposition}[Convex-hull confinement of gated fusion]
+\label{prop:hull}
+For $\mathbf{z} = \mathbf{g}\odot\mathbf{e}_p + (\mathbf{1}-\mathbf{g})
+\odot\mathbf{e}_h$ with $\mathbf{g} \in (0,1)^d$,
+\begin{equation}
+  \min(e_{p,i}, e_{h,i}) < z_i < \max(e_{p,i}, e_{h,i}) \quad \forall i,
+\end{equation}
+hence $\|\mathbf{z}\|_\infty \leq \max(\|\mathbf{e}_p\|_\infty,
+\|\mathbf{e}_h\|_\infty)$. No such bound holds for
+$\mathbf{z} = \mathbf{W}_c[\mathbf{e}_p;\mathbf{e}_h]$. Consequently neither
+operator's function class contains the other.
+\end{proposition}
+\begin{IEEEproof}
+Each $z_i$ is a strict convex combination of $e_{p,i}$ and $e_{h,i}$ because
+$g_i \in (0,1)$, giving the bound. For the converse, take $\mathbf{W}_c$ with
+$\mathbf{z} = 2(\mathbf{e}_p + \mathbf{e}_h)$, whose $\infty$-norm exceeds the
+bound whenever $\mathbf{e}_p,\mathbf{e}_h \neq \mathbf{0}$ share a sign in some
+coordinate; and note that $\mathbf{g}$ depends nonlinearly on
+$[\mathbf{e}_p;\mathbf{e}_h]$, so the gated map is not linear and is not
+realisable by any fixed $\mathbf{W}_c$.
+\end{IEEEproof}
+
+Proposition~\ref{prop:hull} explains the empirical near-tie of
+Section~\ref{sec:fusion} without appealing to noise alone: the two operators
+span overlapping but distinct function classes, and the emotion-relevant signal
+in a pair of pooled vectors evidently lies in the intersection. It also
+identifies what the gate buys that concatenation does not---an explicit
+per-coordinate attribution $\mathbf{g}$ between the perceptual and semantic
+views, which Section~\ref{sec:modality} analyses.
+
+\begin{proposition}[Cost ordering]
+\label{prop:cost}
+With encoder width $d$, token count $K$, and unshared expansions and
+projections in both attention directions, the trainable fusion parameter counts
+are $2d^2 + d$ for both \textsc{concat} and \textsc{gate}, and
+$4(Kd^2 + Kd) + 2(4d^2+4d) + 4d + (2d^2+d)$ for \textsc{xattn}. At $d = 128$,
+$K = 4$ this gives $32{,}896$ against $429{,}696$, and total trainable counts of
+$187{,}656$ against $584{,}456$, a ratio of $3.11\times$; the corresponding
+multiply--accumulate ratio per utterance is $5.28\times$
+(Table~\ref{tab:complexity}).
+\end{proposition}
+
+% =====================================================================
+\begin{figure*}[!t]
+\centering
+\paperfig{figures/fig1_framework_ieee}{\wfigw}{1.053}
+\caption{The PAER-LLM framework. Two feature views of one audio signal---34
+psychoacoustic descriptors and a 768-dimensional frozen HuBERT-base
+embedding---are independently encoded to 128 dimensions and combined by a
+learned per-dimension gate into a single unified representation $\mathbf{z} \in
+\mathbb{R}^{128}$. Two alternative operators, concatenation and token
+cross-attention, are evaluated and not adopted. The resulting posterior over
+eight categories conditions an instruction-tuned language model; only the
+posterior is passed, and learned activations are not. Layers~4 and~5 are drawn
+dashed, below the divider, because they are proposed and implemented but not
+evaluated in this work. Edge annotations give tensor shapes.}
+\label{fig:framework}
+\end{figure*}
+
+\emph{Reading Fig.~\ref{fig:framework}.} The figure is read top to bottom as a
+pipeline and left to right within each layer. The left tab names the layer; the
+right panel states what that layer is responsible for delivering. Layer~1 ends
+in a verified corpus with duplication factor $r=1$, which is the precondition
+for every number in this paper. Layer~2 shows the two views side by side with
+their dimensionalities, and the ``$+$'' between them denotes that they are
+carried forward jointly rather than combined at this stage. Layer~3 is the
+paper's object of study: the two encoders map $34$ and $768$ dimensions to a
+common $128$, the gate combines them, and the classifier emits an eight-way
+posterior; the italic line beneath records the two operators evaluated and not
+adopted. The dashed divider below Layer~3 is the boundary of the experimental
+evidence---everything above it is measured, everything below it is specified and
+implemented but not evaluated, and the dashed outlines of Layers~4 and~5 carry
+that distinction visually rather than relying on the reader to recall it from
+the text.
+
+% =====================================================================
+\section{The PAER-LLM Framework}
+\label{sec:framework}
+% =====================================================================
+Fig.~\ref{fig:framework} summarises the whole; we describe each layer in turn.
+
+\subsection{Data Acquisition Layer}
+\label{sec:data}
+The corpus is RAVDESS \cite{livingstone2018ravdess}, restricted to speech: 1440
+utterances from 24 actors (12 female, 12 male) across eight categories. All
+categories except \emph{neutral} contain 192 utterances; \emph{neutral} contains
+96, as it is recorded at a single intensity. The corpus also contains 1012 song
+recordings, which we exclude. Audio is resampled to 22{,}050~Hz for
+psychoacoustic analysis and to 16{,}000~Hz for the self-supervised encoder,
+matching its pretraining condition.
+
+\emph{Corpus integrity.} We recommend that this layer include an explicit
+integrity check. In our case the distributed archive had been unpacked twice
+into nested directories, so a recursive file walk returned 2880 paths for 1440
+distinct recordings and every derived feature table contained each utterance
+exactly twice. Because the duplicate rows are byte-identical, no summary
+statistic reveals the problem: class balance, feature distributions and file
+counts all appear plausible. The defect surfaces only when the number of unique
+filenames is compared against the number of rows. We report it because it is
+silent, easy to introduce, and materially inflates every downstream result. The
+released harness performs the check and refuses to proceed on a mismatch
+(Algorithm~\ref{alg:integrity}), returning the duplication factor $r$ so that
+the contaminated condition can be reconstructed deliberately for protocol~P1.
+
+\begin{algorithm}[!t]
+\caption{Corpus integrity verification}
+\label{alg:integrity}
+\begin{algorithmic}[1]
+\Require dataset root $D$; expected corpus size $N_{\mathrm{exp}}$
+\Ensure unique utterance set $U$; duplication factor $r$
+\State $P \gets \textsc{Sort}(\text{all \texttt{.wav} paths under } D)$
+\State $U \gets \emptyset$; \; $\mathcal{S} \gets \emptyset$
+\ForAll{$p \in P$}
+  \State $b \gets \textsc{Basename}(p)$
+  \If{$b \notin \mathcal{S}$}
+    \State $\mathcal{S} \gets \mathcal{S} \cup \{b\}$; \;
+           $U \gets U \cup \{p\}$
+  \EndIf
+\EndFor
+\State $r \gets |P| / |U|$
+\If{$r > 1$}
+  \State \textbf{abort} unless duplication is explicitly requested
+  \Statex \Comment{$r>1$: exact copies of test items enter training}
+\EndIf
+\If{$|U| \neq N_{\mathrm{exp}}$} \State \textbf{warn} \EndIf
+\State \Return $U,\; r$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Feature Representation Layer}
+\label{sec:features}
+
+\emph{Psychoacoustic stream.} We extract 34 perceptually motivated descriptors
+per utterance. \emph{Pitch} (5): mean, maximum, minimum, standard deviation and
+range of voiced $F_0$, from Praat's autocorrelation tracker over 75--600~Hz. No
+utterance is wholly unvoiced, so the unvoiced fallback is never exercised.
+\emph{Intensity} (5): the same five statistics of frame-level RMS energy. We
+call these \emph{intensity} and not \emph{loudness}: loudness in the
+psychoacoustic sense \cite{iso532} involves critical-band excitation, masking
+and a compressive sone scale, none of which RMS energy models. \emph{Bark-band
+energies} (24): mean energy in each of 24 bands on the critical-band-rate scale
+of Zwicker and Terhardt \cite{zwicker1980analytical},
+\begin{equation}
+  z(f) = 13\arctan(0.00076 f)
+       + 3.5\arctan\!\left(\left(\frac{f}{7500}\right)^{\!2}\right),
+  \label{eq:bark}
+\end{equation}
+where $f$ is in Hz and $z$ in Bark. Note that the argument of the second
+arctangent is squared, not the arctangent itself. Triangular filters are
+area-normalised so band energy is not biased by the increasing bandwidth of
+higher bands.
+
+One deviation requires comment. The 24 Zwicker bands extend to 15.5~kHz
+($z = 24.0$), above the 11.025~kHz Nyquist frequency of our 22.05~kHz analysis
+rate. Rather than retain bands that would be identically zero, we place 24
+equal-width bands over $[0, z(f_{\mathrm{Nyq}})] = [0, 22.86]$~Bark, so all lie
+below Nyquist by construction. The cost is that the upper $1.14$~Bark of the
+audible range is unrepresented and the bands are not the canonical Zwicker
+bands. Since RAVDESS is distributed at 48~kHz, analysing at $\geq 32$~kHz would
+remove the constraint entirely; we regard this as a defect of the present
+configuration rather than a design choice to defend.
+Algorithm~\ref{alg:bark} gives the construction.
+
+\begin{algorithm}[!t]
+\caption{Nyquist-adaptive Bark filter bank}
+\label{alg:bark}
+\begin{algorithmic}[1]
+\Require sample rate $f_s$; FFT size $n$; band count $B = 24$
+\Ensure filter bank $\Phi \in \mathbb{R}^{B \times (1 + n/2)}$
+\State $\mathbf{f} \gets$ FFT bin centres on $[0, f_s/2]$; \;
+       $\mathbf{z} \gets z(\mathbf{f})$ \Comment{Eq.~\eqref{eq:bark}}
+\State $z_{\max} \gets z(f_s/2)$
+  \Comment{adaptive; canonical scheme reaches $24.0$ at 15.5~kHz}
+\State $\mathbf{e} \gets \textsc{Linspace}(0, z_{\max}, B+2)$
+\For{$i = 1$ \textbf{to} $B$}
+  \State $(\ell, c, u) \gets (e_i, e_{i+1}, e_{i+2})$
+  \State $\Phi_{i,:} \gets \max\!\big(0, \min(\tfrac{\mathbf{z}-\ell}{c-\ell},
+         \tfrac{u-\mathbf{z}}{u-c})\big)$
+  \State $\Phi_{i,:} \gets \Phi_{i,:} / \textstyle\sum_j \Phi_{i,j}$
+    \Comment{unit area}
+\EndFor
+\State \textbf{verify} $\mathrm{Var}_k(\Phi_{i,:}\mathbf{S}_k) > 0\;\forall i$
+\State \Return $\Phi$
+\end{algorithmic}
+\end{algorithm}
+
+\emph{Self-supervised stream.} HuBERT-base \cite{hsu2021hubert}, pretrained on
+LibriSpeech-960 and held frozen. The final hidden state is mean-pooled over time
+to give a 768-dimensional utterance embedding.
+
+\subsection{Unified Representation Layer}
+\label{sec:fusion-design}
+Each stream is encoded by an independent network
+$\mathbf{e}_m = \mathrm{Enc}_m(\mathbf{x}_m) \in \mathbb{R}^{d}$, $m\in\{p,h\}$,
+with $d = 128$ and the stack
+$\mathrm{Linear}(d_m\!\to\! d) \rightarrow \mathrm{LayerNorm} \rightarrow
+\mathrm{GELU} \rightarrow \mathrm{Dropout}(0.3) \rightarrow
+\mathrm{Linear}(d\!\to\! d) \rightarrow \mathrm{LayerNorm} \rightarrow
+\mathrm{GELU}$, using post-normalisation, PyTorch default initialisation and no
+residual connection \cite{ba2016layernorm,hendrycks2016gelu,srivastava2014dropout}.
+Encoding both streams to a common width before fusion is what satisfies the
+capacity constraint~\eqref{eq:capacity}. We compare three operators.
+
+\emph{Concatenation.} $\mathbf{z} = \mathbf{W}_c[\mathbf{e}_p;\mathbf{e}_h]$
+with $\mathbf{W}_c \in \mathbb{R}^{2d\times d}$.
+
+\emph{Gated fusion (adopted).}
+\begin{equation}
+  \mathbf{g} = \mathrm{sigm}\!\big(\mathbf{W}_g[\mathbf{e}_p;\mathbf{e}_h]
+    + \mathbf{b}\big), \quad
+  \mathbf{z} = \mathbf{g}\odot\mathbf{e}_p + (\mathbf{1}-\mathbf{g})
+  \odot\mathbf{e}_h .
+  \label{eq:gate}
+\end{equation}
+Each coordinate of $\mathbf{g}$ is the weight assigned to the perceptual view at
+that coordinate, so $\mathbf{g}$ is a directly readable per-dimension allocation
+between the two representations---a property neither alternative has
+(Proposition~\ref{prop:hull}).
+
+\emph{Token cross-attention.} Each pooled vector is expanded into $K = 4$
+learned tokens,
+\begin{equation*}
+  \mathbf{T}_m = \mathrm{reshape}(\mathbf{W}_m\mathbf{e}_m)
+  \in \mathbb{R}^{K\times d}, \qquad m \in \{p, h\},
+\end{equation*}
+and the streams attend bidirectionally,
+\begin{equation}
+  \mathbf{A}_{p\rightarrow h} = \mathrm{MHA}(\mathbf{T}_p,\mathbf{T}_h,
+  \mathbf{T}_h), \quad
+  \mathbf{A}_{h\rightarrow p} = \mathrm{MHA}(\mathbf{T}_h,\mathbf{T}_p,
+  \mathbf{T}_p),
+  \label{eq:xattn}
+\end{equation}
+with four heads of dimension 32 and attention dropout 0.3. The expansions and
+the attention projections are unshared between directions, so the operator
+instantiates four expansion matrices and two complete attention blocks; a
+post-norm residual, mean pooling over tokens, concatenation and a projection
+$\mathbb{R}^{2d}\!\to\!\mathbb{R}^{d}$ complete it. This accounts exactly for the
+$584{,}456$ trainable parameters of Proposition~\ref{prop:cost}. The expansion
+to $K > 1$ is essential by Corollary~\ref{cor:inert}.
+
+All three operators emit exactly $d = 128$ dimensions, so the head that follows
+has identical capacity ($17{,}544$ parameters) in every condition.
+$\mathbf{z}$ is layer-normalised and passed to
+$\mathrm{Dropout} \rightarrow \mathrm{Linear}(d\!\to\!d) \rightarrow
+\mathrm{GELU} \rightarrow \mathrm{Dropout} \rightarrow
+\mathrm{Linear}(d\!\to\!8)$. The softmax posterior is retained in full.
+
+\begin{algorithm}[!t]
+\caption{Unified psychoacoustic--semantic representation}
+\label{alg:unified}
+\begin{algorithmic}[1]
+\Require $\mathbf{x}_p \in \mathbb{R}^{34}$, $\mathbf{x}_h \in \mathbb{R}^{768}$;
+         scalers $(S_p,S_h)$; width $d$; operator $\omega$
+\Ensure representation $\mathbf{z}$; posterior $\hat{\mathbf{p}}$; gate
+        $\mathbf{g}$
+\State $\mathbf{x}_p \gets S_p(\mathbf{x}_p)$; \;
+       $\mathbf{x}_h \gets S_h(\mathbf{x}_h)$
+       \Comment{fitted on training rows only}
+\State $\mathbf{e}_p \gets \mathrm{Enc}_p(\mathbf{x}_p)$; \;
+       $\mathbf{e}_h \gets \mathrm{Enc}_h(\mathbf{x}_h)$
+       \Comment{both to $\mathbb{R}^{d}$, Eq.~\eqref{eq:capacity}}
+\State $\mathbf{g} \gets \bot$
+\If{$\omega = \textsc{gate}$}
+  \State $\mathbf{g} \gets \mathrm{sigm}(\mathbf{W}_g[\mathbf{e}_p;
+         \mathbf{e}_h]+\mathbf{b})$
+  \State $\mathbf{z} \gets \mathbf{g}\odot\mathbf{e}_p +
+         (\mathbf{1}-\mathbf{g})\odot\mathbf{e}_h$
+         \Comment{Eq.~\eqref{eq:gate}}
+\ElsIf{$\omega = \textsc{concat}$}
+  \State $\mathbf{z} \gets \mathbf{W}_c[\mathbf{e}_p;\mathbf{e}_h]$
+\Else
+  \State $\mathbf{T}_p \gets \mathrm{reshape}(\mathbf{W}_p\mathbf{e}_p)$; \;
+         $\mathbf{T}_h \gets \mathrm{reshape}(\mathbf{W}_h\mathbf{e}_h)$
+  \State \textbf{assert} $K > 1$
+    \Comment{$K{=}1$ is gradient-inert, Cor.~\ref{cor:inert}}
+  \State $\mathbf{A}_{p\rightarrow h},\mathbf{A}_{h\rightarrow p} \gets$
+         Eq.~\eqref{eq:xattn}
+  \State $\mathbf{z} \gets \mathbf{W}_o[\overline{\mathbf{A}}_{p\rightarrow h};
+         \overline{\mathbf{A}}_{h\rightarrow p}]$
+\EndIf
+\State $\mathbf{z} \gets \mathrm{LayerNorm}(\mathbf{z})$;\;
+       $\hat{\mathbf{p}} \gets \mathrm{softmax}(\mathrm{Head}(\mathbf{z}))$
+\State \Return $\mathbf{z},\, \hat{\mathbf{p}},\, \mathbf{g}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Language Intelligence Layer}
+\label{sec:llm}
+The predicted distribution conditions an instruction-tuned language model,
+Phi-3-mini-4k-instruct \cite{abdin2024phi3}. Rather than passing the top-1
+label, the prompt encodes the three highest-probability categories with their
+posterior mass and instructs the model to hedge when the top two lie within a
+margin $\tau$ (Algorithm~\ref{alg:prompt}). The intent is that an ambiguous
+vocal signal should produce a tentative response rather than a confident
+misattribution \cite{tian2023calibration,wen2025abstention}. We do \emph{not}
+pass the learned representation $\mathbf{z}$ to the language model: a model not
+trained alongside that network has no basis for interpreting its activations.
+
+We state plainly that this layer is unevaluated here---no human study, no
+automatic metric, no ablation against top-1-conditioned prompting---and
+$\tau$ is asserted at $0.15$ rather than tuned. Algorithm~\ref{alg:prompt}
+therefore treats $\tau$ as a free parameter, to be set from the
+margin--accuracy curve of Algorithm~\ref{alg:complement}.
+
+\begin{algorithm}[!t]
+\caption{Posterior-conditioned prompt construction}
+\label{alg:prompt}
+\begin{algorithmic}[1]
+\Require posterior $\hat{\mathbf{p}}$; query $q$; context $h$; margin $\tau$;
+         model $\mathcal{M}$
+\Ensure emotion-aware response $y$
+\State $(c_1,c_2,c_3) \gets$ indices of the three largest entries of
+       $\hat{\mathbf{p}}$
+\State $\mu \gets \hat{p}_{c_1} - \hat{p}_{c_2}$ \Comment{top-2 margin}
+\If{$\mu < \tau$}
+  \State $s \gets$ ``evidence is ambiguous between $c_1$ and $c_2$;
+         acknowledge the uncertainty''
+\Else
+  \State $s \gets$ ``evidence indicates $c_1$; respond to that state''
+\EndIf
+\State $\pi \gets \textsc{Compose}(\{(c_i,\hat{p}_{c_i})\}_{i=1}^{3}, s, h, q)$
+  \Comment{mass stated verbatim}
+\State $y \gets \mathcal{M}(\pi)$; \;
+       \textbf{record} $(\hat{\mathbf{p}}, \mu)$ for calibration
+\State \Return $y$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Application Layer}
+The pipeline accepts an utterance, returns a predicted category with its
+posterior, and generates a corresponding response. A demonstration interface is
+included in the released code. As with Layer~4, no user study supports this
+layer and we make no claim for it.
+
+% =====================================================================
+\section{Research Methodology}
+\label{sec:methodology}
+% =====================================================================
+
+\subsection{Methodological Stance}
+The methodology follows from Section~\ref{sec:formulation}. Because
+$\Delta_\Pi(\mathcal{A})$ and $\Delta_\Omega(\Pi)$ are defined on the same
+scale, they can be measured in one experimental design by holding one factor
+fixed while varying the other. We therefore run two orthogonal sweeps on the
+same code path, the same cached features and the same seeds: a
+\emph{protocol sweep} with the architecture fixed, and an \emph{architecture
+sweep} with the protocol fixed at its most defensible setting. A third sweep
+varies the input streams to address $U_p$ directly. Nothing else changes between
+runs; the ablations are therefore controlled rather than comparative.
+
+\subsection{Design Decisions and the Alternatives Considered}
+Table~\ref{tab:methodology} records each substantive methodological choice, the
+alternatives available, and the reason for the decision. Two of the decisions
+work against the apparent strength of our results and are marked accordingly;
+we record them because a methodology section that lists only favourable choices
+is not a methodology section.
+
+\begin{table*}[!t]
+\centering
+\small
+\caption{Research methodology: design decisions, alternatives considered, and
+rationale. Rows marked $\ominus$ are choices that reduce our reported
+performance or weaken our own claim, and were adopted anyway.}
+\label{tab:methodology}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}L{0.15\textwidth}L{0.24\textwidth}L{0.19\textwidth}L{0.33\textwidth}@{}}
+\toprule
+\textbf{Decision} & \textbf{Alternatives considered} & \textbf{Adopted} &
+\textbf{Rationale} \\
+\midrule
+Encoder treatment $\ominus$ & fine-tuned encoder; weighted layer combination;
+frozen final layer & frozen final layer, mean-pooled &
+Isolates the fusion operator and the psychoacoustic stream from encoder
+adaptation, which is known to dominate \cite{chen2023exploring}. Costs us
+absolute accuracy; our figures are a floor. \\
+Perceptual descriptors & eGeMAPS-88; ISO 532-1 loudness/sharpness/roughness;
+cochleagram front-end & 34 descriptors (5 $F_0$, 5 RMS, 24 Bark) &
+Small, interpretable and directly tied to critical-band theory. Benchmarked
+against eGeMAPS on identical folds rather than assumed adequate
+(Table~\ref{tab:modality}). \\
+Fusion family $\Omega$ & attention-only; concatenation-only; late (decision)
+fusion & all three, at fixed output width &
+Constraint~\eqref{eq:capacity} makes the ablation attributable to the operator.
+Late fusion was excluded because it changes head capacity. \\
+Primary protocol & random split; single actor-disjoint split; LOSO &
+actor-disjoint 5-fold &
+Speaker-disjoint by Definition~1, with dispersion; LOSO would be better
+(Section~\ref{sec:mde}) but was not affordable in the present grid. \\
+Protocol ladder anchor & re-run all rungs per operator & one fixed operator
+(token cross-attention) &
+$\Delta_\Pi$ is defined at fixed $\mathcal{A}$; by~\eqref{eq:deltaomega} the
+anchor shifts the result by at most 2.03 points. \\
+Model selection & test partition; validation partition &
+validation, with test selection reproduced only to measure its optimism &
+Test selection is the leakage mode most often undisclosed; P2t/P3t exist to
+quantify it and are never used for a reported result. \\
+Primary metric & accuracy; UAR; macro-$F_1$ & macro-$F_1$ &
+Fixed in advance because it is also the model-selection criterion, and
+\emph{neutral} has half the support. \\
+Multiplicity control $\ominus$ & none; Holm across all six tests &
+Holm within each metric (3 tests) &
+Accuracy and macro-$F_1$ on identical folds are strongly dependent; six tests
+is neither exact nor conservative. This is stricter than no correction. \\
+Claim threshold $\ominus$ & report $p<0.05$; report point estimates &
+admissibility, Definition~\ref{def:admissible} &
+Applied to our own results, which fail it (Section~\ref{sec:mde}). \\
+Complementarity test & difference of means & error sets, McNemar, per-class
+$\Delta$recall, gate distribution &
+$U_p > 0$ can hold below $\delta_{\min}$; means cannot detect it
+(Section~\ref{sec:whencontrib}). \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Benchmarking Methodology}
+\label{sec:benchmark-method}
+Benchmarking in this paper is \emph{protocol-stratified} and \emph{in-harness},
+for reasons that follow from~\eqref{eq:deltapi}.
+
+\emph{Protocol-stratified external benchmarking.} Published figures are grouped
+by protocol class and never compared across classes
+(Table~\ref{tab:matrix}). Within a class they remain only loosely
+comparable, because encoder adaptation, fold count and model-selection practice
+still differ; we therefore additionally record whether each source reports any
+measure of dispersion, since a point estimate without dispersion cannot support
+a ranking at the margins the literature disputes.
+
+\emph{In-harness baselines.} Any comparison we make on our own behalf is against
+a system we ran ourselves, on our own folds, in our own code path. Three
+baselines serve this purpose: chance ($12.50\%$); an MFCC-40 plus random-forest
+classifier, representing the pre-deep-learning approach; and frozen HuBERT-base
+alone, which is the ablation of our own psychoacoustic stream and simultaneously
+the strongest single-encoder reference. The HuBERT-only condition is the one
+that matters for Objective~1, because it is the term $I(\varphi_h(A);Y)$
+in~\eqref{eq:chain} made operational.
+
+\emph{What we do not do.} We do not report a best-of-$n$ figure, do not select
+the fusion operator on the test partition, and do not compare our
+speaker-independent numbers against speaker-dependent published numbers. The
+last of these would improve our apparent standing considerably.
+
+\subsection{Controlled Decomposition Procedure}
+Algorithm~\ref{alg:decompose} states the protocol sweep. Three configuration
+switches vary; everything else is held fixed, so each increment is attributable
+to a single evaluation-design choice.
+
+\begin{algorithm}[!t]
+\caption{Controlled decomposition of the protocol effect}
+\label{alg:decompose}
+\begin{algorithmic}[1]
+\Require features $(X_p,X_h)$, labels $y$, metadata $M$; seeds $\mathcal{S}$;
+         fixed architecture $\mathcal{A}$
+\Ensure accuracy per rung and attributable increments
+\State $\mathcal{R} \gets [\,$P1$, $P2$, $P2t$, $P3$, $P3t$, $P4$\,]$
+       \Comment{Table~\ref{tab:protocols}}
+\ForAll{rungs $\rho \in \mathcal{R}$}
+  \State \textbf{if} $\rho.\mathrm{dup}$ \textbf{then}
+         $(X,y,M) \gets \textsc{Replicate}(X,y,M;r)$
+         \Comment{restore contamination}
+  \ForAll{$s \in \mathcal{S}$}
+    \State $(I_{\mathrm{tr}},I_{\mathrm{va}},I_{\mathrm{te}}) \gets
+           \Pi_{\rho}(\mathcal{D}, s)$ \Comment{Eq.~\eqref{eq:protocol}}
+    \State $I_{\mathrm{sel}} \gets I_{\mathrm{te}}$ \textbf{if}
+           $\rho.\mathrm{sel}=\mathbf{test}$ \textbf{else} $I_{\mathrm{va}}$
+    \State $\theta^\star \gets \textsc{FitFold}(\mathcal{A},I_{\mathrm{tr}},
+           I_{\mathrm{va}},I_{\mathrm{sel}},s)$
+    \State record accuracy, macro-$F_1$, UAR on $I_{\mathrm{te}}$
+  \EndFor
+  \State $\mu_\rho \gets$ mean over seeds (and folds for P4)
+\EndFor
+\State $\Delta_{\mathrm{dup}} \gets \mu_{\mathrm{P1}}-\mu_{\mathrm{P2}}$
+  \Comment{local defect, not a field practice}
+\State $\Delta_{\mathrm{spk}} \gets \mu_{\mathrm{P2}}-\mu_{\mathrm{P3}}$
+  \Comment{$\dagger$}
+\State $\Delta_{\mathrm{sel}} \gets \mu_{\mathrm{P3t}}-\mu_{\mathrm{P3}}$
+  \Comment{$\dagger$}
+\State $\Delta_{\mathrm{split}} \gets \mu_{\mathrm{P3}}-\mu_{\mathrm{P4}}$
+  \Comment{$\dagger$}
+\State \Return $\{\mu_\rho\},\{\Delta_\bullet\}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Assessing the Unified Representation}
+\label{sec:complement-method}
+Aggregate accuracy is a weak instrument for the question of
+Section~\ref{sec:whencontrib}: two views can satisfy $U_p > 0$ while their
+combination moves the mean by less than $\delta_{\min}$.
+Algorithm~\ref{alg:complement} therefore measures complementarity on the error
+sets, and computes the calibration diagnostics Layer~4 requires.
+
+\begin{algorithm}[!t]
+\caption{Stream complementarity and posterior calibration}
+\label{alg:complement}
+\begin{algorithmic}[1]
+\Require pooled CV predictions $\{(\hat{\mathbf{p}}^{(m)}_k,y_k)\}$ for
+         $m\in\{p,h,\mathrm{fused}\}$; gates $\{\mathbf{g}_k\}$; bins $B$
+\Ensure complementarity and calibration report
+\State $E_m \gets \{k : \arg\max\hat{\mathbf{p}}^{(m)}_k \neq y_k\}$
+\State $J \gets |E_p \cap E_h| / |E_p \cup E_h|$
+  \Comment{$J\!\to\!1$: the views fail together}
+\State \textbf{report} $|E_h\setminus E_p|$, $|E_p\setminus E_h|$
+  \Comment{operationalises $U_p>0$, Sec.~\ref{sec:whencontrib}}
+\State $m^\star \gets \arg\min_{m\in\{p,h\}}|E_m|$
+\State $(b,c) \gets (|E_{m^\star}\!\setminus\! E_{\mathrm{fused}}|,\,
+       |E_{\mathrm{fused}}\!\setminus\! E_{m^\star}|)$
+\State $p_{\mathrm{McN}} \gets$ exact binomial test on $(b,c)$
+\State \textbf{report} per-class $\Delta$recall, fused $-\, m^\star$
+\State \textbf{report} mean and spread of $\mathbf{g}$ per dimension, per class
+\State $\mathrm{ECE} \gets \sum_{b}\frac{|\mathcal{B}_b|}{N}
+       |\mathrm{acc}(\mathcal{B}_b)-\mathrm{conf}(\mathcal{B}_b)|$
+\State plot accuracy against margin $\mu$; set $\tau^\star$
+  \Comment{fixes $\tau$ in Alg.~\ref{alg:prompt}}
+\State \textbf{repeat} ECE under P1 and P4
+  \Comment{does contamination change calibration?}
+\State \Return $\{J,b,c,p_{\mathrm{McN}},\mathrm{ECE}_{\mathrm{P1}},
+       \mathrm{ECE}_{\mathrm{P4}},\tau^\star\}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Metrics and Statistical Treatment}
+\label{sec:stats}
+We report accuracy, macro-averaged $F_1$ and unweighted average recall (UAR).
+Because \emph{neutral} has half the support of the other classes, accuracy alone
+is misleading. For single-split results we report percentile bootstrap 95\%
+confidence intervals over 2000 resamples of the test partition. For
+cross-validated results we report the mean, the standard deviation across folds
+(computed with $n-1$ in the denominator), and the 95\% confidence interval of
+the mean; the last is the inferentially meaningful quantity and the three are
+labelled distinctly throughout \cite{agarwal2021precipice}.
+
+Paired comparisons between operators use identical folds and report the mean
+paired difference, its standard deviation, a 95\% confidence interval, a paired
+two-sided $t$-test, and Holm--Bonferroni adjusted $p$-values \emph{within} each
+metric across its three pairwise comparisons \cite{demsar2006statistical,
+dietterich1998tests}. With five folds the exact Wilcoxon signed-rank test cannot
+attain $p < 0.0625$ and is omitted \cite{card2020power}. Design sensitivity
+follows~\eqref{eq:mde}.
+
+% =====================================================================
+\section{Experimental Setup}
+\label{sec:setup}
+% =====================================================================
+
+\subsection{Evaluation Protocols}
+Six protocols differ only in partitioning and in which partition selects the
+model (Table~\ref{tab:protocols}). \emph{Actor} refers to a RAVDESS performer;
+\emph{speaker-disjoint} means no actor's utterances appear in more than one
+partition. Under all protocols, feature standardisation is fitted on the
+training partition alone.
+
+\begin{table}[!t]
+\centering\small
+\caption{The six evaluation protocols. Architecture, features, optimiser,
+schedule and seeds are identical across rows. P2t and P3t reproduce undisclosed
+test-set model selection so that its optimism can be measured; they are never
+used for a reported result.}
+\label{tab:protocols}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Protocol} & \textbf{Duplicates} & \textbf{Partition} &
+\textbf{Selection} \\
+\midrule
+P1  & present (2880) & random 80/20   & validation \\
+P2  & removed (1440) & random 80/20   & validation \\
+P2t & removed        & random 80/20   & \textbf{test} \\
+P3  & removed        & actor-disjoint & validation \\
+P3t & removed        & actor-disjoint & \textbf{test} \\
+P4  & removed        & actor-disjoint & validation, 5-fold \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!t]
+\centering\small
+\caption{Published actor assignments (seed 42). RAVDESS numbers actors so that
+odd identifiers are male and even are female.}
+\label{tab:folds}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Partition} & \textbf{Actors} \\
+\midrule
+P3 train      & 1, 3, 4, 6, 7, 8, 10, 12, 13, 15, \\
+              & 17, 18, 19, 21, 22, 24 \\
+P3 validation & 5, 9, 14, 20 \\
+P3 test       & 2, 11, 16, 23 \\
+\midrule
+P4 fold 1 (test) & 3, 8, 11, 23, 24 \\
+P4 fold 2 (test) & 6, 7, 14, 18, 19 \\
+P4 fold 3 (test) & 1, 9, 16, 21, 22 \\
+P4 fold 4 (test) & 2, 10, 12, 13, 15 \\
+P4 fold 5 (test) & 4, 5, 17, 20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{algorithm}[!t]
+\caption{Gender-balanced speaker-disjoint partitioning}
+\label{alg:split}
+\begin{algorithmic}[1]
+\Require metadata $M$ (\textit{actor}, \textit{gender}); fractions
+         $\tau_{\mathrm{te}},\nu$; seed $s$
+\Ensure disjoint $I_{\mathrm{tr}},I_{\mathrm{va}},I_{\mathrm{te}}$
+\State $A_{\mathrm{tr}},A_{\mathrm{va}},A_{\mathrm{te}} \gets
+       \emptyset,\emptyset,\emptyset$
+\ForAll{genders $g$ in $M$}
+  \State $A_g \gets \textsc{Shuffle}(\text{actors of gender } g;\, s)$
+  \State $n_{\mathrm{te}} \gets \max(1,\lfloor |A_g|\tau_{\mathrm{te}}\rceil)$;\;
+         $n_{\mathrm{va}} \gets \max(1,\lfloor (|A_g|-n_{\mathrm{te}})\nu\rceil)$
+  \State append the first $n_{\mathrm{te}}$ to $A_{\mathrm{te}}$, the next
+         $n_{\mathrm{va}}$ to $A_{\mathrm{va}}$, the rest to $A_{\mathrm{tr}}$
+\EndFor
+\State \textbf{assert} the three actor sets are pairwise disjoint
+  \Comment{overlap fails loudly, not silently}
+\State $I_\bullet \gets \{k : M_k.\textit{actor} \in A_\bullet\}$
+\State \textbf{publish} $A_{\mathrm{tr}},A_{\mathrm{va}},A_{\mathrm{te}}$
+  \Comment{Table~\ref{tab:folds}}
+\State \Return $I_{\mathrm{tr}},I_{\mathrm{va}},I_{\mathrm{te}}$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[!t]
+\caption{Training one fold without leakage}
+\label{alg:fit}
+\begin{algorithmic}[1]
+\Require $X_p,X_h,y$; $I_{\mathrm{tr}},I_{\mathrm{va}}$; selection set
+         $I_{\mathrm{sel}}$ (default $I_{\mathrm{va}}$); epochs $E$;
+         patience $\pi$; seed $s$
+\Ensure $\theta^\star$; scalers $(S_p,S_h)$
+\State $\textsc{SetSeed}(s)$;\;
+       $S_m \gets \textsc{Fit}(X_m[I_{\mathrm{tr}}])$ for $m\in\{p,h\}$
+       \Comment{training rows only}
+\State $\mathbf{w} \gets$ inverse class frequency of $y[I_{\mathrm{tr}}]$
+\State $b^\star \gets -\infty$;\; $c \gets \pi$
+\For{$e = 1$ \textbf{to} $E$}
+  \State train one epoch (Alg.~\ref{alg:unified} forward, weighted
+         cross-entropy, gradient clipping)
+  \State $m \gets \textsc{MacroF1}$ on $I_{\mathrm{sel}}$
+  \If{$m > b^\star$} \State $b^\star \gets m$;\; $\theta^\star \gets \theta$;\;
+      $c \gets \pi$
+  \Else \State $c \gets c-1$; \textbf{if} $c=0$ \textbf{then break} \EndIf
+\EndFor
+\State \Return $\theta^\star,(S_p,S_h)$
+  \Comment{test partition read exactly once, afterwards}
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation}
+Table~\ref{tab:hyper} gives the configuration. Optimisation uses AdamW
+\cite{loshchilov2019adamw} with cosine annealing \cite{loshchilov2017sgdr} and
+label smoothing \cite{szegedy2016rethinking}; cross-entropy is weighted by
+inverse class frequency to compensate for the half-sized \emph{neutral} class.
+
+\begin{table}[!t]
+\centering\small
+\caption{Hyperparameters and signal-processing configuration. HuBERT-base is
+frozen; parameter counts exclude it.}
+\label{tab:hyper}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Optimiser / LR / weight decay & AdamW / $10^{-3}$ / $10^{-2}$ \\
+Schedule / batch / clipping   & cosine annealing / 32 / 5.0 \\
+Dropout / label smoothing     & 0.3 / 0.05 \\
+Epochs / patience / monitor   & 100 / 15 / val.\ macro-$F_1$ \\
+Class weighting               & inverse frequency \\
+Width $d$ / tokens $K$ / heads & 128 / 4 / 4 \\
+Seeds                         & \TORUN{5 seeds} \\
+\midrule
+Psychoacoustic sample rate    & 22{,}050 Hz \\
+HuBERT sample rate            & 16{,}000 Hz \\
+FFT / hop / window            & 2048 / 512 / Hann \\
+$F_0$ estimator / range       & Praat autocorr.\ / 75--600 Hz \\
+Bark bands / normalisation    & 24 / unit area \\
+\midrule
+Hardware / software           & \TOADD{GPU, CUDA, versions} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+% =====================================================================
+
+\subsection{Decomposing the Protocol Effect}
+\label{sec:protocol}
+Table~\ref{tab:protocol} reports one system under all six protocols. The
+architecture is held fixed at token cross-attention throughout, that being the
+configuration in which the ladder was executed; by~\eqref{eq:deltaomega} the
+choice of anchor changes the measured effect by at most 2.03 points, and
+re-running the ladder under the adopted gated operator is queued
+(\TORUN{ladder under gated fusion, for symmetry with Table~\ref{tab:fusion}}).
+
+\begin{table}[!t]
+\centering\small
+\setlength{\tabcolsep}{3.5pt}
+\caption{Effect of evaluation protocol---architecture (token cross-attention),
+features, optimiser, schedule and seed are identical across rows; only the
+partitioning and the selection partition differ. Intervals for P1 and P3 are
+percentile bootstrap 95\% CIs over 2000 resamples of the test partition; P4
+reports mean $\pm$ SD across folds. The P1 interval is given for symmetry only:
+because that test partition contains exact duplicates of training items, it does
+not admit an inferential interpretation.}
+\label{tab:protocol}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+& \textbf{Protocol} & \textbf{Acc.\ (\%)} & \textbf{Macro-$F_1$} &
+\textbf{UAR} \\
+\midrule
+P1  & duplicated + random    & 94.79 & 94.97 & 95.13 \\
+    & {\footnotesize 95\% CI} & {\footnotesize [92.9, 96.5]} &
+      {\footnotesize [93.1, 96.6]} & \\
+P2  & deduplicated + random  & \RUN & \RUN & \RUN \\
+P2t & \quad + test selection & \RUN & \RUN & \RUN \\
+P3  & actor-disjoint, single & 72.50 & 70.83 & 73.05 \\
+    & {\footnotesize 95\% CI} & {\footnotesize [67.1, 78.3]} &
+      {\footnotesize [64.8, 76.2]} & \\
+P3t & \quad + test selection & \RUN & \RUN & \RUN \\
+P4  & actor-disjoint, 5-fold & 64.28 & 63.42 & 64.52 \\
+    & {\footnotesize $\pm$ SD} & {\footnotesize $\pm$ 5.30} &
+      {\footnotesize $\pm$ 4.45} & {\footnotesize $\pm$ 4.59} \\
+    & {\footnotesize 95\% CI of mean} & {\footnotesize [57.7, 70.9]} &
+      {\footnotesize [57.9, 68.9]} & \\
+\midrule
+    & \textbf{P1 $-$ P4 (total)} & \textbf{30.51} & \textbf{31.56} &
+      \textbf{30.61} \\
+    & \textbf{P2 $-$ P4 (attributable)} & \RUN & \RUN & \RUN \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[!t]
+\centering
+\paperfig{figures/fig2_decomposition_ladder}{\figw}{0.735}
+\caption{Decomposition of the protocol effect. Each rung of
+Table~\ref{tab:protocol} is a step, annotated with the increment attributable to
+the single design choice that separates it from the rung below. The three
+increments a published system can plausibly incur are solid;
+$\Delta_{\mathrm{dup}}$, which arises from a corrupted local copy rather than a
+protocol choice, is shown separately. Target file:
+\texttt{figures/fig2\_decomposition\_ladder.pdf}.}
+\label{fig:ladder}
+\end{figure}
+
+\emph{Reading Fig.~\ref{fig:ladder}.} The vertical axis is test accuracy on a
+single scale, so the height of each step is the cost of one design decision in
+the units the field actually reports. The figure should be read from the top
+down: each descent is what a reader loses by removing one source of optimism,
+and the total descent is the distance between a number that would pass without
+comment in most venues and a number a practitioner could rely on. The separation
+of $\Delta_{\mathrm{dup}}$ from the remaining three is deliberate---only the
+lower three are choices the published literature makes.
+
+Three observations follow.
+
+First, the contaminated configuration yields 94.79\%. Nothing about this figure
+appears anomalous in isolation: it sits among the 95.83\% of Ibrahim \emph{et
+al.} \cite{ibrahim2026multimodal} and the 97.8--99.0\% of Jafarzadeh \emph{et
+al.} \cite{jafarzadeh2024ssl}, and would be reportable without comment. The same
+system under speaker-disjoint five-fold cross-validation attains
+64.28\%~$\pm$~5.30---a gap of 30.5 points obtained without changing a line of
+the model.
+
+We separate that total into two parts, because they carry different weight as
+criticism of the literature. $\Delta_{\mathrm{dup}}$ arises from a defect in our
+own extraction pipeline and not from any practice we can attribute to published
+work; we report it because it is silent and easy to introduce, not to indict
+anyone. The remaining three increments---speaker-dependent partitioning,
+test-set model selection, single-split reporting---are choices that appear in
+the published record, and their sum $\mu_{\mathrm{P2}}-\mu_{\mathrm{P4}}$ is the
+quantity that speaks to the literature.
+
+Second, the single-split speaker-independent figure (72.50\%) exceeds the
+cross-validated mean by 8.2 points and lies outside the latter's standard
+deviation. This is a sampling effect, not an inconsistency: with four held-out
+actors the estimate depends heavily on which four. Per-actor accuracies in that
+split range from 58.3\% to 85.0\%, a spread of 26.7 points. We therefore report
+P4 as our primary result and regard single-split speaker-independent figures as
+uninterpretable without the fold assignment.
+
+Third, the 95\% confidence interval of the P4 mean spans $[57.7, 70.9]$---a
+width of 13 points on the quantity the field treats as a single number. That
+width is itself an argument.
+
+The magnitude is consistent with the leakage literature outside speech
+\cite{rosenblatt2024leakage,elangovan2021memorization}. What is specific to
+acted emotional speech is that the leakage is not accidental: it follows
+directly from an elicitation design that holds lexical content constant so that
+emotion is the only varying factor. The property that makes the corpus a clean
+stimulus set is the property that makes random partitioning catastrophic.
+
+\subsection{Fusion Architecture Ablation}
+\label{sec:fusion}
+Table~\ref{tab:fusion} compares the three operators under P4 on identical folds,
+and Table~\ref{tab:perfold} gives the per-fold values from which every
+aggregate is computed.
+
+\begin{table}[!t]
+\centering\small
+\setlength{\tabcolsep}{3pt}
+\caption{Fusion-operator ablation under speaker-independent five-fold
+cross-validation (P4), identical folds, features, encoder depth,
+hyperparameters and head capacity. Mean $\pm$ SD across folds; 95\% CI of the
+mean in brackets. No value is bolded: the top two operators are statistically
+indistinguishable (Table~\ref{tab:fusion-stats}).}
+\label{tab:fusion}
+\adjustbox{max width=\linewidth}{%
+\begin{tabular}{@{}lcccr@{}}
+\toprule
+\textbf{Fusion} & \textbf{Acc.\ (\%)} & \textbf{Macro-$F_1$} & \textbf{UAR} &
+\textbf{Params} \\
+\midrule
+Concatenation & 66.32 $\pm$ 5.80 & 65.28 $\pm$ 5.30 & 66.31 $\pm$ 5.74 &
+187{,}656 \\
+ & {\footnotesize [59.1, 73.5]} & {\footnotesize [58.7, 71.9]} &
+   {\footnotesize [59.2, 73.4]} & \\
+Gated \emph{(adopted)} & 66.25 $\pm$ 4.97 & 65.38 $\pm$ 4.67 &
+65.78 $\pm$ 4.64 & 187{,}656 \\
+ & {\footnotesize [60.1, 72.4]} & {\footnotesize [59.6, 71.2]} &
+   {\footnotesize [60.0, 71.5]} & \\
+Cross-attn.\ ($K{=}4$) & 64.28 $\pm$ 5.30 & 63.42 $\pm$ 4.45 &
+64.52 $\pm$ 4.59 & 584{,}456 \\
+ & {\footnotesize [57.7, 70.9]} & {\footnotesize [57.9, 68.9]} &
+   {\footnotesize [58.8, 70.2]} & \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[!t]
+\centering\small
+\caption{Per-fold test accuracy (\%) under P4. Folds are identical across
+operators (Table~\ref{tab:folds}); differences are therefore paired. Fold~4,
+whose held-out actors are 2, 10, 12, 13 and 15, is the hardest for all three
+operators, which is why the paired design is essential and a single split is
+not.}
+\label{tab:perfold}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Fusion} & \textbf{F1} & \textbf{F2} & \textbf{F3} & \textbf{F4} &
+\textbf{F5} \\
+\midrule
+Concatenation          & 73.00 & 69.33 & 63.33 & 58.00 & 67.92 \\
+Gated                  & 70.00 & 70.33 & 66.67 & 58.00 & 66.25 \\
+Cross-attention        & 67.00 & 69.67 & 63.67 & 55.67 & 65.42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!t]
+\centering\footnotesize
+\setlength{\tabcolsep}{2.6pt}
+\caption{Pairwise comparisons across the five actor-disjoint folds of P4.
+$\Delta$ is the mean paired difference from unrounded fold values;
+$d_z = \Delta/\mathrm{SD}(\Delta)$. Holm--Bonferroni is applied within each
+metric across its three comparisons. Macro-$F_1$ is the primary metric.}
+\label{tab:fusion-stats}
+\adjustbox{max width=\linewidth}{%
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+\textbf{Comparison} & \textbf{Metric} & $\bm{\Delta}$ & \textbf{SD} &
+\textbf{95\% CI} & $\bm{p_{\mathrm{Holm}}}$ & $\bm{d_z}$ \\
+\midrule
+Gated $-$ xattn  & Macro-$F_1$ & $+1.97$ & 0.76 & [$+1.02,+2.91$] &
+\textbf{0.013} & 2.59 \\
+Concat $-$ xattn & Macro-$F_1$ & $+1.86$ & 2.52 & [$-1.27,+4.99$] & 0.348 &
+0.74 \\
+Gated $-$ concat & Macro-$F_1$ & $+0.10$ & 3.02 & [$-3.64,+3.85$] & 0.942 &
+0.03 \\
+\midrule
+Gated $-$ xattn  & Accuracy & $+1.97$ & 1.15 & [$+0.55,+3.39$] & 0.055 & 1.72 \\
+Concat $-$ xattn & Accuracy & $+2.03$ & 2.61 & [$-1.21,+5.27$] & 0.313 & 0.78 \\
+Gated $-$ concat & Accuracy & $-0.07$ & 2.44 & [$-3.10,+2.97$] & 0.954 &
+$-0.03$ \\
+\midrule
+Gated $-$ xattn  & UAR & $+1.27$ & 1.02 & [$+0.00,+2.53$] & 0.150 & 1.24 \\
+Concat $-$ xattn & UAR & $+1.80$ & 2.59 & [$-1.41,+5.01$] & 0.390 & 0.70 \\
+Gated $-$ concat & UAR & $-0.53$ & 3.39 & [$-4.74,+3.67$] & 0.744 & $-0.16$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Cross-attention is the weakest of the three on all three metrics. Only one
+comparison survives multiplicity correction: gated fusion exceeds
+cross-attention on the primary metric by 1.97 macro-$F_1$ points
+($p_{\mathrm{Holm}} = 0.013$, $d_z = 2.59$). The corresponding accuracy and UAR
+comparisons do not survive ($0.055$, $0.150$), and neither concatenation
+comparison approaches significance. Gated fusion and concatenation are
+indistinguishable, and the sign of their difference flips between metrics
+($-0.07$ accuracy, $+0.10$ macro-$F_1$, $-0.53$ UAR)---itself diagnostic that
+the comparison is noise.
+
+We adopt gated fusion as the reference configuration, and stress that the choice
+is \emph{not empirically forced}: the two are indistinguishable on every metric
+($p_{\mathrm{Holm}} \geq 0.74$), and selecting between them on a tenth of a
+point would be an instance of the researcher degree of freedom this paper
+criticises. We prefer the gate for two architectural reasons rather than a
+performance one. It produces a fixed-width representation independent of the
+number of streams, so the framework extends without altering downstream
+capacity; and by Proposition~\ref{prop:hull} its gate vector is a directly
+readable per-coordinate allocation between the two views, which concatenation
+does not expose. A reader who prefers concatenation for its lower cost is
+equally justified by our results.
+
+\emph{Protocol versus architecture.} The largest architectural difference is
+2.03 accuracy points against a 30.5-point protocol effect measured with the
+architecture held fixed---a ratio of roughly fifteen to one.
+Fig.~\ref{fig:pva} shows both on a common vertical scale.
+
+\begin{figure}[!t]
+\centering
+\paperfig{figures/fig4_protocol_vs_architecture}{\figw}{0.62}
+\caption{Evaluation protocol (left) and fusion architecture (right) on a common
+vertical scale. Varying only the partitioning within one fixed system produces a
+30.5-point spread; varying the fusion operator at the most defensible protocol
+produces 2.0 points. Error bars are 95\% confidence intervals (bootstrap over
+test utterances for P1 and P3; of the mean across folds for P4 and the three
+operators).}
+\label{fig:pva}
+\end{figure}
+
+\emph{Reading Fig.~\ref{fig:pva}.} The two panels share axis limits; that shared
+scale is the entire content of the figure and nothing should be read from either
+panel alone. The left panel spans most of the available range. The right panel
+collapses to near-flatness, and the error bars of its three operators overlap
+one another almost completely---so the visual impression that the operators are
+interchangeable is not an artefact of the scale but the finding itself. A reader
+who wishes to see the right panel resolved must either accept a scale on which
+the left panel no longer fits, or collect enough folds to shrink the intervals;
+Section~\ref{sec:mde} quantifies the second option.
+
+\subsection{Stream Ablation and the Value of the Psychoacoustic View}
+\label{sec:modality}
+Table~\ref{tab:modality} isolates each stream, and is the direct test of $U_p$.
+Unimodal configurations retain identical encoder depth, latent width and head
+capacity. We additionally report eGeMAPS \cite{eyben2016gemaps}, extracted with
+openSMILE \cite{eyben2010opensmile}, so the perceptual stream is benchmarked
+against a standardised parameter set rather than assumed adequate.
+
+\begin{table}[!t]
+\centering\small
+\setlength{\tabcolsep}{3pt}
+\caption{Stream ablation under P4. Identical folds, encoder depth, latent width
+$d=128$ and head ($17{,}544$ parameters); only the input stream differs.
+Parameter counts are per row because encoder depth does not equalise capacity
+across input dimensionalities ($34\!\to\!128$ against $768\!\to\!128$).}
+\label{tab:modality}
+\adjustbox{max width=\linewidth}{%
+\begin{tabular}{@{}lccccr@{}}
+\toprule
+\textbf{Input} & \textbf{Dim} & \textbf{Acc.} & \textbf{Macro-$F_1$} &
+\textbf{UAR} & \textbf{Params} \\
+\midrule
+Chance                   & ---    & 12.50 & --- & 12.50 & 0 \\
+Psychoacoustic only      & 34     & \RUN & \RUN & \RUN & 39{,}304 \\
+eGeMAPS only             & 88     & \RUN & \RUN & \RUN & \RUN \\
+HuBERT only              & 768    & \RUN & \RUN & \RUN & 133{,}256 \\
+\midrule
+eGeMAPS + HuBERT (gated) & 88+768 & \RUN & \RUN & \RUN & \RUN \\
+Both (gated fusion)      & 34+768 & 66.25 & 65.38 & 65.78 & 187{,}656 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The HuBERT-only row is our in-harness frozen-HuBERT baseline
+(Section~\ref{sec:benchmark-method}), so any comparison we make on our own
+behalf is against a system we ran on our own folds.
+
+\emph{Complementarity beyond the mean.} Section~\ref{sec:mde} shows this
+evaluation cannot resolve differences below 3.47 accuracy points, so a
+psychoacoustic contribution smaller than that is invisible in
+Table~\ref{tab:modality} whether or not $U_p > 0$.
+Algorithm~\ref{alg:complement} therefore examines the error sets directly.
+Fig.~\ref{fig:complement} reports the result.
+\TORUN{populate Fig.~\ref{fig:complement}; state $J$, $|E_h\setminus E_p|$,
+$|E_p\setminus E_h|$ and $p_{\mathrm{McN}}$ here}
+
+\begin{figure*}[!t]
+\centering
+\paperfig{figures/fig5_stream_complementarity}{\wfigw}{0.350}
+\caption{Complementarity of the two streams under P4, on pooled predictions in
+which every utterance is classified exactly once by a model that never observed
+its speaker. \emph{Left:} overlap of the error sets of the two unimodal systems,
+with the counts each stream alone recovers---the operational form of $U_p>0$.
+\emph{Centre:} per-class recall of the fused system minus the stronger unimodal
+system, so gains offset by losses are visible where aggregate accuracy hides
+them. \emph{Right:} distribution of the learned gate $\mathbf{g}$ across the 128
+dimensions and the eight categories. Target file:
+\texttt{figures/fig5\_stream\_complementarity.pdf}.}
+\label{fig:complement}
+\end{figure*}
+
+\emph{Reading Fig.~\ref{fig:complement}.} The left panel is the panel that
+answers Objective~1, and the quantity to look at is the two crescents rather
+than the intersection: a large intersection with empty crescents means the views
+fail on the same utterances and the perceptual stream is redundant, while
+populated crescents mean $U_p>0$ regardless of what the accuracy column says.
+The centre panel guards against a specific misreading of a null aggregate
+result---a stream that raises recall on two categories and lowers it on two
+others produces zero net accuracy while changing the model substantially. The
+right panel is diagnostic rather than evaluative: a gate concentrated near zero
+means the model has learned to ignore the perceptual stream, which would corroborate redundancy from the model's own parameters rather than from its outputs.
+
+\subsection{What This Evaluation Can Resolve}
+\label{sec:mde}
+Applying~\eqref{eq:mde} with the observed standard deviation of paired fold-wise
+accuracy differences, $\overline{\mathrm{SD}(\Delta)} = 2.07$ points averaged
+over the three accuracy comparisons of Table~\ref{tab:fusion-stats}, a two-sided
+paired $t$-test at $\alpha = 0.05$ attains 80\% power only for
+$|d_z| \geq 1.68$, giving $\delta_{\min}(5) = \mathbf{3.47}$ accuracy points.
+The same calculation gives $2.06$ points at ten folds and $1.23$ points under
+leave-one-speaker-out with 24 folds (Fig.~\ref{fig:mde}).
+
+\begin{figure}[!t]
+\centering
+\paperfig{figures/fig9_minimum_detectable_effect}{0.94\figw}{0.70}
+\caption{Design sensitivity as a function of fold count, at 80\% power and
+$\alpha = 0.05$, using the observed standard deviation of paired fold-wise
+accuracy differences. At five folds the design resolves 3.47 accuracy points.
+The largest difference between any two fusion operators (2.03 points, dashed)
+and the difference between the top two (0.07 points, dotted) both fall below it.}
+\label{fig:mde}
+\end{figure}
+
+\emph{Reading Fig.~\ref{fig:mde}.} The curve falls as $1/\sqrt{n}$ modulated by
+the $t$ critical value, so the steep early portion is where additional folds buy
+the most resolution: moving from five to ten folds recovers 1.4 points of
+sensitivity, while moving from ten to twenty-four recovers only 0.8. The two
+horizontal reference lines are our own measured effects. The figure should be
+read as a design tool rather than a result---given a difference one hopes to
+detect, it returns the number of folds required, and given a number of folds it
+returns the smallest claim that would be admissible under
+Definition~\ref{def:admissible}.
+
+By Definition~\ref{def:admissible}, the difference between the best and worst
+fusion operators (2.03 points) and between the top two (0.07 points) are both
+\textbf{inadmissible} under our own design. This is the operational content of
+the paper's central claim: not merely that architectural effects are smaller
+than protocol effects, but that on this corpus, under a protocol a careful
+author would defend, they are smaller than the evaluation can measure.
+
+One apparent tension should be addressed, since it is easily misread.
+Table~\ref{tab:fusion-stats} reports a 1.97-point macro-$F_1$ difference as
+significant after correction, below the 3.47-point threshold. There is no
+contradiction: the threshold uses the \emph{average} paired standard deviation
+across comparisons (2.07 points), whereas that comparison exhibited an unusually
+small one (0.76 points). Design sensitivity characterises what an evaluation can
+be relied upon to detect in general, not what it detected in one favourable
+case---and with $n=5$ an SD estimate of 0.76 is itself imprecise. We report the
+significant comparison and decline to build on it.
+
+\subsection{Per-Class Performance and Confusions}
+\label{sec:perclass}
+Table~\ref{tab:perclass} contrasts per-class results under the contaminated and
+speaker-independent protocols for the same system.
+
+\begin{table}[!t]
+\centering\small
+\setlength{\tabcolsep}{3.4pt}
+\caption{Per-class $F_1$ under the contaminated protocol P1 ($n=576$) and the
+speaker-independent single split P3 ($n=240$, actors 2, 11, 16, 23), same
+architecture. $\Delta$ is the amount by which contamination flatters each class.
+The failure that dominates speaker-independent performance, \emph{happy}, is the
+class contamination conceals most.}
+\label{tab:perclass}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& \multicolumn{2}{c}{\textbf{P1 (contaminated)}} &
+  \multicolumn{3}{c}{\textbf{P3 (speaker-disjoint)}} & \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-6}
+\textbf{Emotion} & \textbf{Rec.} & $\bm{F_1}$ & \textbf{Prec.} &
+\textbf{Rec.} & $\bm{F_1}$ & $\bm{\Delta F_1}$ \\
+\midrule
+Angry     & 1.000 & 0.950 & 0.692 & 0.844 & 0.761 & $+0.189$ \\
+Calm      & 0.961 & 0.980 & 0.846 & 0.688 & 0.759 & $+0.221$ \\
+Disgust   & 0.935 & 0.966 & 0.824 & 0.875 & 0.848 & $+0.118$ \\
+Fearful   & 0.922 & 0.922 & 0.867 & 0.812 & 0.839 & $+0.083$ \\
+Happy     & 0.909 & 0.915 & 0.800 & 0.375 & 0.511 & $\bm{+0.404}$ \\
+Neutral   & 1.000 & 0.974 & 0.448 & 0.812 & 0.578 & $+0.396$ \\
+Sad       & 0.948 & 0.930 & 0.696 & 0.500 & 0.582 & $+0.348$ \\
+Surprised & 0.935 & 0.960 & 0.682 & 0.938 & 0.789 & $+0.171$ \\
+\midrule
+Macro     & 0.951 & 0.950 & 0.732 & 0.730 & 0.708 & $+0.242$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\emph{Happy} is the dominant failure mode under P3, with recall 0.375; its
+errors distribute into \emph{angry} (8 of 32), \emph{surprised} (6) and
+\emph{neutral} (5). \emph{Sad} has the second-lowest recall (0.500).
+\emph{Neutral} shows high recall but low precision (0.448), indicating that the
+class-weighted objective over-predicts the minority class.
+Section~\ref{sec:why-fail} accounts for both. Class supports are small and the
+intervals correspondingly wide: recall of 0.375 on 32 utterances carries a
+binomial 95\% interval of roughly $[0.21, 0.57]$.
+\TORUN{recompute the P3 column from pooled P4 predictions, so every utterance is
+classified once by a model that never observed its speaker}
+
+The $\Delta F_1$ column carries a finding of its own. Contamination does not
+inflate the classes uniformly: it flatters \emph{happy} by 0.404 and
+\emph{neutral} by 0.396 while flattering \emph{fearful} by only 0.083. The two
+classes a speaker-independent system most needs to fix are precisely the two a
+contaminated evaluation reports as solved.
+
+\begin{figure}[!t]
+\centering
+\paperfig{figures/fig8_confusion_matrices}{\figw}{0.45}
+\caption{Row-normalised confusion matrices under (a) the contaminated
+random-split protocol P1 and (b) the speaker-independent protocol P3. Classes
+are ordered by arousal and valence rather than alphabetically.}
+\label{fig:cm}
+\end{figure}
+
+\emph{Reading Fig.~\ref{fig:cm}.} The two panels are the same system under two
+protocols, so every difference between them is caused by the evaluation design
+and none by the model. Panel~(a) is what near-perfect diagonal structure looks
+like when a classifier can identify the talker rather than the emotion, and it
+is worth dwelling on how unremarkable it appears. Panel~(b) is informative in
+its off-diagonal structure: because the classes are ordered by arousal and
+valence, the errors form a visible block among the high-arousal states of
+opposing valence---\emph{happy}, \emph{angry} and \emph{surprised}---which is
+the acoustically predicted confusion and is exactly what
+Section~\ref{sec:why-fail} attributes to mean-pooling and to the absence of
+voice-quality descriptors. The block is absent from panel~(a) not because the
+model has solved it but because it never had to.
+
+\subsection{Contamination Conceals Speaker and Gender Disparity}
+\label{sec:speaker}
+Under P3, per-actor accuracy ranges from 58.3\% (actor 23) to 85.0\% (actor 2),
+and accuracy is 83.3\% on female speakers against 61.7\% on male---a 21.6-point
+disparity, comparable to asymmetries reported in fairness analyses of
+transformer-based SER \cite{wagner2023dawn}.
+
+The same system evaluated under P1 tells a different story
+(Table~\ref{tab:fairness}). The gender gap shrinks to 2.5 points and the
+per-actor spread narrows from 26.7 to 14.3 points across all 24 actors. A
+fairness audit conducted on the contaminated protocol would conclude the system
+is close to parity. It is not.
+
+\begin{table}[!t]
+\centering\small
+\caption{Contamination conceals the fairness failure. Same architecture, same
+features, same seed; only the evaluation protocol differs. A disparity audit run
+under P1 would report near-parity for a system that is 21.6 points worse on male
+speakers.}
+\label{tab:fairness}
+\adjustbox{max width=\linewidth}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& \textbf{P1 (contaminated)} & \textbf{P3 (speaker-disjoint)} &
+\textbf{Ratio} \\
+\midrule
+Female accuracy      & 96.0 & 83.3 & --- \\
+Male accuracy        & 93.5 & 61.7 & --- \\
+\textbf{Gender gap}  & \textbf{2.5} & \textbf{21.6} & $8.6\times$ \\
+\midrule
+Per-actor min        & 85.7 & 58.3 & --- \\
+Per-actor max        & 100.0 & 85.0 & --- \\
+\textbf{Actor spread} & \textbf{14.3} & \textbf{26.7} & $1.9\times$ \\
+\midrule
+Worst-class $F_1$    & 0.915 (\emph{happy}) & 0.511 (\emph{happy}) &
+$1.8\times$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+This extends the paper's argument beyond reported accuracy. A protocol that
+inflates a headline number by 30 points also suppresses the two audits---per-group disparity and per-class failure---on which responsible deployment depends,
+and suppresses them by a larger relative factor than it inflates the headline.
+We report the disparity rather than correcting for it; per-speaker normalisation
+is an obvious mitigation. Two cautions apply: the P3 figure rests on four
+held-out actors and should be recomputed across all 24 from pooled P4
+predictions (\TORUN{per-actor and per-gender accuracy, pooled P4}), and the
+magnitude of the variation is itself a further argument for cross-validated
+reporting.
+
+\subsection{Empirical Confirmation of the Degeneracy Result}
+\label{sec:degeneracy}
+Proposition~\ref{prop:degen} and Corollary~\ref{cor:inert} predict that the
+framework as originally specified---cross-attention applied directly to pooled
+stream vectors, so that each sequence has length one---is exactly
+gradient-inert. We confirmed this on the original implementation. Scaling the
+psychoacoustic input by a factor of 100 while holding the HuBERT input fixed
+changed the output logits by $0.0$ to machine precision, and the accumulated
+gradient with respect to every parameter of the psychoacoustic encoder was
+exactly zero.
+
+Two consequences deserve emphasis. First, any attention map derived from such a
+configuration is uninformative: every weight is $1.0$ by construction, and
+interpreting it as evidence of learned cross-stream interaction is
+unwarranted---a specific instance of the concern raised by Bibal \emph{et al.}
+\cite{bibal2022attention}. Second, the failure is silent. The model trains, the
+loss decreases, accuracy is competitive, and no diagnostic short of a gradient
+check reveals that half the architecture is inert. The assertion at line~11 of
+Algorithm~\ref{alg:unified} exists to make it loud.
+
+Correcting the mechanism by expanding each stream into $K = 4$ tokens restores
+gradient flow to both encoders. It does not make cross-attention competitive:
+Table~\ref{tab:fusion} shows the corrected mechanism underperforming a single
+sigmoid gate at $3.1\times$ the parameters and $5.3\times$ the multiply--accumulate cost. We have not swept $K$; the claim should be read as holding at
+$K=4$ rather than for all $K$.
+
+\subsection{Computational Complexity}
+\label{sec:complexity}
+Table~\ref{tab:complexity} instantiates Proposition~\ref{prop:cost}. Counts are
+exact, derived analytically and confirmed against the implementation.
+
+\begin{table}[!t]
+\centering\small
+\setlength{\tabcolsep}{3pt}
+\caption{Computational profile of the trainable stack, excluding the frozen
+HuBERT encoder. MACs are multiply--accumulate operations per utterance, counting
+linear projections and attention products. The trainable stack is negligible
+beside one frozen-encoder forward pass ($\approx$16 GMAC for a 3.7~s utterance),
+so operator choice is a memory and parameter question rather than a throughput
+one.}
+\label{tab:complexity}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Configuration} & \textbf{Fusion} & \textbf{Total} & \textbf{MACs} &
+\textbf{Rel.} \\
+ & \textbf{params} & \textbf{params} & & \\
+\midrule
+Psychoacoustic only    & ---      & 39{,}304  & 38{,}144  & 0.21$\times$ \\
+HuBERT only            & ---      & 133{,}256 & 132{,}096 & 0.71$\times$ \\
+Concatenation          & 32{,}896 & 187{,}656 & 185{,}600 & 1.00$\times$ \\
+Gated \emph{(adopted)} & 32{,}896 & 187{,}656 & 185{,}600 & 1.00$\times$ \\
+Cross-attn.\ ($K{=}4$) & 429{,}696 & 584{,}456 & 980{,}224 & 5.28$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three points follow. The gate costs exactly what concatenation costs, so
+Proposition~\ref{prop:hull}'s interpretability advantage is free. Token
+cross-attention costs $3.11\times$ the parameters and $5.28\times$ the
+operations for the worst accuracy of the three, which is the strongest practical
+statement the paper can make about it. And because the frozen encoder dominates
+by four to five orders of magnitude, none of these differences is a deployment
+consideration---the case for the gate rests on parameter economy and
+interpretability, not on latency, and we decline to argue otherwise.
+
+\subsection{Performance Matrix and Benchmarking}
+\label{sec:literature}
+Table~\ref{tab:matrix} consolidates every system we ran and every published
+figure we compare against, under the protocol-stratified discipline of
+Section~\ref{sec:benchmark-method}.
+
+\begin{table*}[!t]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\caption{Performance matrix. Figures are \textbf{not} comparable across protocol
+classes, and within a class remain only loosely comparable because encoder
+adaptation, fold count and model-selection practice differ. \emph{Disp.}
+records whether the source reports any measure of variability. Rows marked
+\emph{in-harness} were run by us, on the folds of Table~\ref{tab:folds}, in the
+released code. LSO denotes leave-speaker-out; LOSO leave-one-speaker-out.}
+\label{tab:matrix}
+\begin{tabular}{@{}llccccll@{}}
+\toprule
+\textbf{System} & \textbf{Protocol} & \textbf{Acc.\ (\%)} &
+\textbf{Macro-$F_1$} & \textbf{UAR} & \textbf{Disp.} & \textbf{Params} &
+\textbf{Source} \\
+\midrule
+\multicolumn{8}{l}{\emph{(a) Speaker-dependent --- random utterance partition.
+Not comparable with (b).}} \\
+wav2vec2 + classifier      & random 80/20  & 99.0  & --- & --- & \checkmark &
+--- & \cite{jafarzadeh2024ssl} \\
+HuBERT + classifier        & random 80/20  & 97.8  & --- & --- & \checkmark &
+--- & \cite{jafarzadeh2024ssl} \\
+Hybrid fusion (A+V)        & random split  & 95.83 & --- & --- & $\times$ &
+--- & \cite{ibrahim2026multimodal} \\
+PAER-LLM, cross-attn.\ (P1) & duplicated + random & 94.79 & 94.97 & 95.13 &
+\checkmark & 584{,}456 & \emph{in-harness} \\
+MFCC-40 + random forest    & random split  & 92.36 & --- & --- & $\times$ &
+--- & \emph{in-harness}\textsuperscript{a} \\
+emotion2vec                & random 10-fold & 82.43 & --- & --- & $\times$ &
+--- & \cite{ma2024emotion2vec} \\
+\midrule
+\multicolumn{8}{l}{\emph{(b) Speaker-independent. Our primary result is
+PAER-LLM (P4).}} \\
+wav2vec2 (weighted layers) & fixed actor split & --- & --- & 84.3 & \checkmark &
+--- & \cite{pepino2021wav2vec} \\
+CAMuLeNet                  & 10-fold LSO   & 82.3  & --- & --- & $\times$ &
+--- & \cite{goel2024camulenet} \\
+XLSR-wav2vec2 + MLP        & subj.-wise 5-fold & 81.82 & --- & --- &
+\checkmark & --- & \cite{lunajimenez2022multimodal} \\
+Whisper-Medium             & 10-fold LSO   & 71.3  & --- & --- & $\times$ &
+--- & \cite{goel2024camulenet} \\
+PAER-LLM, single split (P3) & actor-disjoint, 1 split & 72.50 & 70.83 & 73.05 &
+\checkmark & 584{,}456 & \emph{in-harness} \\
+\textbf{PAER-LLM, concat (P4)} & actor-disj.\ 5-fold & \textbf{66.32} &
+\textbf{65.28} & \textbf{66.31} & \checkmark & 187{,}656 & \emph{in-harness} \\
+\textbf{PAER-LLM, gated (P4)} & actor-disj.\ 5-fold & \textbf{66.25} &
+\textbf{65.38} & \textbf{65.78} & \checkmark & 187{,}656 & \emph{in-harness} \\
+WavLM                      & 10-fold LSO   & 65.4  & --- & --- & $\times$ &
+--- & \cite{goel2024camulenet} \\
+\textbf{PAER-LLM, cross-attn.\ (P4)} & actor-disj.\ 5-fold & \textbf{64.28} &
+\textbf{63.42} & \textbf{64.52} & \checkmark & 584{,}456 & \emph{in-harness} \\
+HuBERT                     & 10-fold LSO   & 58.7  & --- & --- & $\times$ &
+--- & \cite{goel2024camulenet} \\
+HuBERT only (ours)         & actor-disj.\ 5-fold & \RUN & \RUN & \RUN &
+\checkmark & 133{,}256 & \emph{in-harness} \\
+Psychoacoustic only (ours) & actor-disj.\ 5-fold & \RUN & \RUN & \RUN &
+\checkmark & 39{,}304 & \emph{in-harness} \\
+Hybrid fusion (A+V)        & LOSO          & 48.06 & --- & --- & \checkmark &
+--- & \cite{ibrahim2026multimodal} \\
+wav2vec2.0                 & 10-fold LSO   & 39.6  & --- & --- & $\times$ &
+--- & \cite{goel2024camulenet} \\
+\midrule
+Chance                     & ---           & 12.50 & --- & 12.50 & --- & 0 &
+--- \\
+\bottomrule
+\end{tabular}
+\\[2pt]
+{\footnotesize \textsuperscript{a}Our own pre-deep-learning baseline. Its
+protocol is a random split; like the published rows of class (a) it is not
+comparable with class (b), and we include it to show that a 1990s feature set
+under a contaminated protocol outscores every speaker-independent system in the
+table.}
+\end{table*}
+
+Three features of Table~\ref{tab:matrix} carry the benchmarking argument.
+
+First, the highest score in the table belongs to a random-split system, and the
+fifth-highest to MFCC features with a random forest---a pre-deep-learning
+baseline that outscores every speaker-independent entry, including systems using
+encoders that did not exist when it was designed. Under protocol-blind
+comparison one would conclude that SER has regressed for a decade. This is the
+clearest available demonstration that cross-protocol tabulation is not merely
+imprecise but inverts the ordering.
+
+Second, class (b) spans 44.7 points---wider than class (a)'s 16.6---so protocol
+annotation alone does not make figures comparable. Fold count, encoder
+adaptation and selection practice still differ, and the two entries in class (b)
+that exceed our result by the largest margin \cite{goel2024camulenet,
+lunajimenez2022multimodal} both adapt the encoder, which we deliberately do not.
+
+Third, the \emph{Disp.} column is mostly empty. A point estimate without
+dispersion cannot support a ranking at the one-to-three-point margins the
+literature disputes, which is the quantitative form of the recommendation in
+Section~\ref{sec:recommendations}.
+
+% =====================================================================
+\section{Discussion}
+\label{sec:discussion}
+% =====================================================================
+
+\subsection{Overall Discussion}
+\label{sec:overall}
+Read together, the results describe a field measuring below its own noise floor
+and not reporting that it is doing so.
+
+The protocol effect is 30.5 accuracy points; the architecture effect at the most
+defensible protocol is 2.03; the design's minimum detectable effect is 3.47.
+These three numbers are the paper in miniature. The first exceeds the second by
+a factor of fifteen, which means that any comparison across papers with
+different partitioning schemes is dominated by a nuisance factor. The third
+exceeds the second, which means that even a comparison \emph{within} one careful
+harness cannot resolve differences of the size the literature routinely reports
+as contributions. Our own framework's contribution is subject to the same bound,
+and we have applied it to ourselves in Section~\ref{sec:mde} rather than
+exempting the proposed method.
+
+Three further findings sharpen this. The degeneracy result
+(Proposition~\ref{prop:degen}) shows that a widely used fusion construction can
+be not merely weak but formally inert, undetectably so without a gradient check,
+which means some published dual-stream results may describe single-stream
+models. The convex-hull result (Proposition~\ref{prop:hull}) shows that the two
+operators that perform identically are not the same function class, so their
+empirical tie is a statement about the data rather than about the operators. And
+the fairness result (Section~\ref{sec:speaker}) shows that contamination
+suppresses disparity audits by a larger relative factor ($8.6\times$) than it
+inflates headline accuracy ($1.5\times$), so a protocol chosen for convenience
+propagates into claims about who a system works for.
+
+What the results do \emph{not} show is that psychoacoustic descriptors are
+redundant. Section~\ref{sec:whencontrib} distinguishes $U_p = 0$ from
+$U_p > 0$-but-unmeasurable, and this evaluation cannot separate them; that is
+precisely why Algorithm~\ref{alg:complement} measures error sets rather than
+means. The honest position on Objective~1 is that the framework is specified,
+its operators are characterised analytically, its cost is quantified, and the
+representational question it was built to answer is currently bounded by the
+measurement apparatus rather than by the representation.
+
+\subsection{Implications for the Literature}
+\label{sec:recommendations}
+If a 30-point swing is obtainable by partitioning alone, a reported accuracy
+without a stated protocol carries almost no information. We do not suggest
+speaker-dependent evaluation is never appropriate---for a system intended to
+adapt to a known enrolled user it may be the relevant condition---but the
+condition must be stated, and results obtained under it must not be compared
+with speaker-independent figures. The confusion is compounded by ambiguous
+terminology: ``leave-one-out'' and ``$k$-fold cross-validation'' are used for
+both utterance-level and speaker-level partitioning.
+
+We recommend that publications on acted emotional speech corpora report, at
+minimum: (i) the number of unique recordings alongside the number of rows used;
+(ii) whether partitioning is speaker-disjoint, with the actor assignment
+published; (iii) dispersion across folds, not a point estimate; (iv) which
+partition was used for model selection; and (v) the design sensitivity of the
+evaluation, so readers can judge whether a reported improvement is measurable.
+Items (ii) and (iii) were the norm established in 2009
+\cite{schuller2009challenge}. Adopting an externally defined split such as
+EmoBox \cite{ma2024emobox} satisfies (i)--(ii) without requiring each author to
+invent a protocol.
+
+\subsection{Why the Fusion Behaves as It Does}
+\label{sec:why-fusion}
+Proposition~\ref{prop:hull} establishes that the gate and concatenation span
+distinct function classes; their empirical tie therefore requires explanation
+from the data. Attention is a mechanism for \emph{selecting among} elements of a
+sequence conditioned on a query, and its advantage arises when there is
+structure to select over. After mean-pooling, each stream is a single
+fixed-length vector with no temporal correspondence to the other, so there is
+nothing to align. The $K$-token expansion manufactures a sequence by linear
+projection, but the tokens are deterministic functions of the same pooled vector
+and carry no independent information; attention over them can only recombine
+what a linear layer already provides, at $5.28\times$ the cost. On this reading
+the gate and the concatenation are not merely adequate but sufficient: with two
+vectors and no correspondence structure, the useful combination operators are
+essentially per-coordinate reweightings, and both span that space from opposite
+sides of Proposition~\ref{prop:hull}.
+
+This predicts that cross-attention should become advantageous as soon as genuine
+sequences are retained---frame-level HuBERT states aligned against frame-level
+psychoacoustic contours---consistent with gains reported for temporally-resolved
+attentive pooling \cite{leygue2025attentivepooling}. It also identifies where
+the unified representation should be built next: not in a better operator over
+pooled vectors, but at the frame level, where the two views have something to
+align.
+
+\subsection{Why Particular Emotions Fail}
+\label{sec:why-fail}
+\emph{Happy} fails for over-determined reasons. Acoustically, happiness in acted
+speech is a high-arousal state whose principal correlates---elevated mean $F_0$,
+increased $F_0$ range, raised intensity, faster rate---are shared with anger and
+surprise; the cues that distinguish them are spectral-balance and voice-quality
+measures (spectral tilt, harmonics-to-noise ratio, jitter, shimmer) and temporal
+contour shape, none of which survive mean-pooling and none of which appear in
+our 34-descriptor set. Representationally, mean-pooling discards the rise--fall
+contour that distinguishes surprise from sustained joy. At the corpus level,
+RAVDESS's \emph{happy} is a portrayed rather than felt state. We predict the
+failure would be substantially reduced by retaining temporal structure and
+adding voice-quality descriptors---a prediction the eGeMAPS row of
+Table~\ref{tab:modality} partially tests, since eGeMAPS includes exactly those
+measures.
+
+\emph{Neutral} is over-predicted as a direct consequence of the
+inverse-frequency class weighting adopted to compensate for its halved support.
+The alternatives---no weighting, resampling, or a margin-based loss---trade
+neutral recall against neutral precision. It is also worth noting that
+\emph{neutral} is the acoustic origin of the arousal--valence space, so any
+weakly realised emotional colouring falls near it; some part of the low
+precision is substantive rather than an artefact of weighting.
+
+\subsection{The Language-Intelligence Layer}
+\label{sec:llm-discussion}
+This layer is the least evidenced part of the work, and we treat it accordingly.
+Conditioning a language model on a posterior rather than a label is a defensible
+design, but as implemented it is posterior-formatted prompting with an asserted
+threshold, and we make no claim for it.
+
+The experiment that would make it load-bearing is the calibration analysis
+already specified in Algorithm~\ref{alg:complement}. Computing expected
+calibration error and a reliability diagram on pooled cross-validated
+predictions would establish whether the posterior carries information about
+correctness at all; conditioning accuracy on the top-1 minus top-2 margin would
+allow $\tau$ to be set rather than asserted. Computing the same quantities under
+P1 and P4 would test a stronger hypothesis: that a contaminated protocol
+produces a model that is not merely more accurate but differently
+\emph{calibrated}, and therefore one whose downstream interaction policy is
+tuned to a confidence it does not possess. Given that contamination already
+distorts the fairness audit by $8.6\times$ (Section~\ref{sec:speaker}), we
+regard this as likely. Fig.~\ref{fig:reliability} reserves the space.
+
+\begin{figure}[!t]
+\centering
+\paperfig{figures/fig7_reliability}{\figw}{0.574}
+\caption{Posterior calibration under the contaminated and speaker-independent
+protocols. \emph{Left:} reliability diagrams for P1 and P4 with expected
+calibration error, on pooled predictions. \emph{Right:} accuracy conditioned on
+the top-1 minus top-2 posterior margin, from which the hedging threshold $\tau$
+of Algorithm~\ref{alg:prompt} is set rather than asserted. Target file:
+\texttt{figures/fig7\_reliability.pdf}.}
+\label{fig:reliability}
+\end{figure}
+
+\emph{Reading Fig.~\ref{fig:reliability}.} In the left panel the diagonal is
+perfect calibration; a curve below it marks over-confidence. The comparison to
+make is not between either curve and the diagonal but between the two curves:
+if P1 and P4 are displaced differently, then a hedging policy tuned on a
+contaminated evaluation will hedge at the wrong confidence in deployment,
+independently of how much accuracy the contamination added. The right panel is
+the design curve for $\tau$: the value at which accuracy rises steeply is the
+margin below which the system should decline to assert a state, and reading it
+off the plot replaces the asserted 0.15 with a measured quantity.
+
+What this layer does not do is learn multimodal grounding. Approaches that align
+speech representations into the language model's embedding space
+\cite{kang2025frozen,kim2024paralinguistics} achieve something categorically
+different, and we regard that as the appropriate direction for this component.
+
+\subsection{Practical Implications}
+For practitioners, published RAVDESS accuracies are not a guide to deployed
+performance on unheard speakers, and the gap is not a matter of a few points. A
+system selected on a 97\% benchmark figure may deliver in the mid-sixties on a
+new talker, and---by Section~\ref{sec:speaker}---may deliver considerably worse
+than that for one gender. For affective interfaces in mental-health triage,
+driver-state monitoring or call-centre analytics, the procurement question is
+not ``what accuracy does it report'' but ``under what partition, over how many
+speakers, with what dispersion, and with what per-group breakdown''. For system
+builders, the results argue for spending effort on encoder adaptation and
+temporal modelling, where the literature shows double-digit effects, rather than
+on fusion-operator design over pooled vectors, where we measure effects below
+the noise floor and prove one popular operator inert.
+
+\subsection{What Generalises and What Does Not}
+\label{sec:generalise}
+The numerical results are RAVDESS-specific. The analytical results of
+Section~\ref{sec:properties} are corpus-independent: the degeneracy of
+single-token attention is a property of the softmax, the convex-hull
+confinement a property of the sigmoid, and the cost ordering a property of the
+parameterisation. The \emph{magnitude} of the protocol effect is
+corpus-dependent and we expect it near an upper bound here, since RAVDESS's
+factorial design maximises the near-duplicate structure available to a random
+split; on corpora with lexical variety and more speakers such as CREMA-D
+\cite{cao2014cremad} the effect should be smaller, and on smaller corpora such
+as EmoDB \cite{burkhardt2005emodb} larger \cite{rosenblatt2024leakage}. The
+\emph{ordering}---that protocol effects exceed architectural effects---we expect
+to be robust, because architectural effects in this literature are consistently
+reported at the 1--3 point scale while speaker-dependence effects are
+consistently reported at 20--40 points wherever both protocols are run on one
+system \cite{ibrahim2026multimodal,portal2025benchmarking}.
+
+\subsection{Future Work}
+\label{sec:future}
+Multi-corpus replication of the decomposition on CREMA-D \cite{cao2014cremad},
+EmoDB \cite{burkhardt2005emodb} and IEMOCAP \cite{busso2008iemocap} using EmoBox
+splits \cite{ma2024emobox}; frame-level rather than pooled fusion with genuine
+cross-attention, which Section~\ref{sec:why-fusion} identifies as the setting
+where the unified representation has room to improve; middle-layer and
+weighted-layer representations \cite{pasad2023comparative,chiu2025probing};
+standardised psychoacoustic metrics (ISO 532-1 loudness, sharpness, roughness
+\cite{iso532}) in place of Bark energies; per-speaker normalisation to address
+the gender disparity; deep LLM integration via encoder alignment
+\cite{kang2025frozen,kim2024paralinguistics} with human evaluation; and
+extension of the decomposition to naturalistic corpora following the Interspeech
+2025 challenge protocol \cite{naini2025challenge}.
+
+% =====================================================================
+\section{Limitations}
+\label{sec:limitations}
+% =====================================================================
+\begin{enumerate}
+  \item \textbf{Single corpus.} All results are on RAVDESS. Acted speech from 24
+    actors reading two fixed sentences is not representative of spontaneous
+    emotional expression, and cross-corpus generalisation is considerably weaker
+    \cite{portal2025benchmarking}.
+  \item \textbf{Seed variance unmeasured in the reported tables.} The results
+    derive from a single seed. Initialisation variance is plausibly comparable
+    to the architectural differences we report \cite{bouthillier2021variance},
+    and the multi-seed grid (\TORUN{five seeds}) is required before
+    Table~\ref{tab:fusion-stats} can be treated as settled. If seed variance
+    swamps the fusion differences, that strengthens rather than weakens the
+    central claim.
+  \item \textbf{Five folds.} With $n = 5$ the exact Wilcoxon test cannot reach
+    conventional significance and $\delta_{\min} = 3.47$ points.
+    Leave-one-speaker-out would reduce this to 1.23 and is standard on this
+    corpus.
+  \item \textbf{The representational claim is bounded by the evaluation.} The
+    contribution of the psychoacoustic stream can be established from means only
+    if it exceeds $\delta_{\min}$; below that, Algorithm~\ref{alg:complement}
+    rather than Table~\ref{tab:modality} carries the argument.
+  \item \textbf{Protocol ladder anchored on one operator.} Table~\ref{tab:protocol}
+    is executed under token cross-attention. By~\eqref{eq:deltaomega} the anchor
+    shifts the result by at most 2.03 points, but symmetry with
+    Table~\ref{tab:fusion} would be preferable.
+  \item \textbf{Frozen encoder, final-layer pooling.} We use mean-pooled
+    HuBERT-base without fine-tuning, discarding temporal structure and forgoing
+    the largest available source of improvement \cite{chen2023exploring}, and we
+    pool the final hidden state though middle layers carry more paralinguistic
+    information \cite{pasad2023comparative,chiu2025probing}. Our absolute
+    figures are a floor.
+  \item \textbf{No $K$ sweep.} The conclusion that cross-attention is
+    uncompetitive is established at $K = 4$ only.
+  \item \textbf{Bark band placement.} Our 24 bands are equal-width over
+    $[0, z(f_{\mathrm{Nyq}})]$ rather than the canonical Zwicker bands, and the
+    22.05~kHz analysis rate discards the upper 1.14~Bark of the audible range.
+  \item \textbf{Gender disparity reported but not addressed}, and computed on
+    four held-out actors (Section~\ref{sec:speaker}).
+  \item \textbf{Latency and memory unprofiled.} Table~\ref{tab:complexity}
+    reports parameters and MACs analytically, not wall-clock or peak memory.
+  \item \textbf{Language layer unevaluated.} No human study, automatic metric or
+    ablation supports Layer~4, and $\tau$ is asserted rather than tuned.
+\end{enumerate}
+
+Several of these---single corpus, single seed, five folds, absent dispersion on
+some quantities---are precisely the reporting weaknesses this paper criticises.
+We state them explicitly rather than omitting them, which is the standard we
+advocate.
+
+% =====================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% =====================================================================
+We proposed PAER-LLM, a five-layer framework that unifies perceptually motivated
+psychoacoustic descriptors with frozen self-supervised speech representations
+through a learned per-dimension gate, and conditions an instruction-tuned
+language model on the resulting posterior rather than on a discarded top-1
+label. We formalised the unified-representation objective, the
+information-theoretic condition under which the perceptual view can contribute,
+the evaluation protocol as an operator, and an admissibility criterion that a
+representational claim must satisfy.
+
+Evaluating the framework under six protocols differing only in partitioning and
+model selection, we measured a 30.5-point spread in reported accuracy with the
+architecture held fixed. Under the same conditions the largest difference
+between three fusion architectures was 2.03 points---below the 3.47-point
+minimum detectable effect of the evaluation, and therefore inadmissible under
+our own criterion. Contamination additionally conceals a 21.6-point gender
+disparity, reporting it as 2.5, and conceals the dominant per-class failure
+entirely.
+
+We proved that single-token cross-modal attention is analytically degenerate: it
+silently reduces a dual-stream model to a single-stream one, and no diagnostic
+short of a gradient check reveals it. We further showed that gated fusion and
+concatenation span distinct function classes despite performing identically, and
+that the corrected multi-token attention costs $3.1\times$ the parameters and
+$5.3\times$ the operations for the worst accuracy of the three.
+
+Our speaker-independent result, 66.25\%~$\pm$~4.97 accuracy with frozen
+HuBERT-base features and gated fusion, is reported with dispersion, confidence
+intervals, per-speaker and per-gender breakdowns and published fold assignments.
+We release the evaluation harness, including the contaminated-protocol
+reproduction.
+
+The field does not lack architectural proposals. It lacks the evaluation
+discipline required to tell which of them work.
+
+% =====================================================================
+\section*{Reproducibility Statement}
+RAVDESS is publicly available under CC BY-NC-SA 4.0
+\cite{livingstone2018ravdess} from \url{https://doi.org/10.5281/zenodo.1188976}.
+The complete implementation---feature extraction, the three fusion operators,
+the actor-disjoint splitting utilities, the contaminated-protocol reproduction,
+the evaluation harness and all configuration files---is available at
+\TOADD{repository URL} (archived at Zenodo, DOI \TOADD{DOI}). The repository
+contains the actor-to-fold assignment of Table~\ref{tab:folds} as a
+machine-readable manifest, the per-fold prediction files from which every table
+and figure is generated, the scripts that regenerate them, and the
+corpus-integrity utility of Algorithm~\ref{alg:integrity}. The environment is
+pinned in \texttt{requirements.txt}.
+
+The numbers are cross-consistent in ways checkable without the code: in
+Table~\ref{tab:perclass}, the support-weighted mean recall of the P3 column
+equals the P3 accuracy of Table~\ref{tab:protocol} (72.50\%), its macro-averaged
+recall equals the P3 UAR (73.05\%), and its macro-averaged $F_1$ equals the P3
+macro-$F_1$ (70.83\%), each to two decimal places; and the per-fold values of
+Table~\ref{tab:perfold} reproduce every mean, standard deviation and paired
+difference in Tables~\ref{tab:fusion} and~\ref{tab:fusion-stats}.
+
+\section*{Acknowledgment}
+\TOADD{acknowledgements, or delete this section}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

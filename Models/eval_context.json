@@ -1,0 +1,6 @@
+{
+  "keep_duplicates": true,
+  "split": "random",
+  "fusion": "cross_attention",
+  "tag": "cross_attention_random_dup"
+}
